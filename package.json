@@ -16,7 +16,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "pnpm -r --if-present lint",
-    "postinstall": "pnpm --filter @claude-chat/protocol build",
+    "postinstall": "pnpm --filter @claude-chat/protocol build && pnpm --filter @claude-chat/database build",
     "test": "pnpm -r --if-present test",
     "typecheck": "pnpm -r --if-present typecheck"
   },
