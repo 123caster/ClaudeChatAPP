@@ -19,7 +19,7 @@ describe('GET /v1/health', () => {
 
     expect(response.statusCode).toBe(200);
     expect(body).toEqual({
-      status: 'ok',
+      status: 'degraded',
       gatewayVersion: 'test-version',
       protocolVersion: 1,
       claude: {
@@ -34,6 +34,27 @@ describe('GET /v1/health', () => {
       pairing: {
         available: false,
       },
+    });
+  });
+
+  it('reports ready Claude as healthy and sanitizes probe failures', async () => {
+    const ready = buildApp({
+      gatewayVersion: 'test-version',
+      claudeHealth: () => ({ status: 'ready' }),
+    });
+    const failed = buildApp({
+      gatewayVersion: 'test-version',
+      claudeHealth: () => Promise.reject(new Error('secret stderr')),
+    });
+    apps.push(ready, failed);
+
+    expect((await ready.inject({ method: 'GET', url: '/v1/health' })).json()).toMatchObject({
+      status: 'ok',
+      claude: { status: 'ready' },
+    });
+    expect((await failed.inject({ method: 'GET', url: '/v1/health' })).json()).toMatchObject({
+      status: 'degraded',
+      claude: { status: 'unavailable', message: 'Claude health check failed.' },
     });
   });
 });

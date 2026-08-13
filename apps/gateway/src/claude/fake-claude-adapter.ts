@@ -6,6 +6,7 @@ import type {
 } from './claude-adapter.js';
 
 export type FakeClaudeStep =
+  | { type: 'session_start'; claudeSessionId: string }
   | { type: 'delta'; text: string }
   | { type: 'complete_message'; text: string }
   | { type: 'tool_start'; toolCallId: string; toolName: string; input: unknown }
@@ -34,6 +35,9 @@ export class FakeClaudeAdapter implements ClaudeAdapter {
       }
 
       switch (step.type) {
+        case 'session_start':
+          yield { type: 'session.started', claudeSessionId: step.claudeSessionId };
+          break;
         case 'delta':
           yield { type: 'assistant.delta', text: step.text };
           break;

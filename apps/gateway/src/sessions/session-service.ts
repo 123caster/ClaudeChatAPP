@@ -133,7 +133,10 @@ export class SessionService {
     if (resumed) {
       return { requestId: request.requestId, session: this.serializeDetail(resumed) };
     }
-    return result.value;
+    return {
+      requestId: request.requestId,
+      session: this.serializeDetail(this.requireSession(result.value.session.id)),
+    };
   }
 
   public sendMessage(sessionId: string, request: SendMessageRequest): SendMessageResponse {
@@ -193,7 +196,10 @@ export class SessionService {
     if (resumed) {
       return { ...result.value, session: this.summary(resumed) };
     }
-    return result.value;
+    return {
+      ...result.value,
+      session: this.summary(this.requireSession(sessionId)),
+    };
   }
 
   public cancel(sessionId: string, request: WriteActionRequest): SessionSummary {
@@ -210,9 +216,9 @@ export class SessionService {
         if (session.status !== 'running' && session.status !== 'waiting_permission') {
           throw new SessionConflictError('Only an active turn can be cancelled.');
         }
-        const updated = this.database.sessions.updateStatus(
+        const updated = this.database.sessions.interrupt(
           sessionId,
-          'interrupted',
+          'cancelled',
           this.now().toISOString(),
         )!;
         return this.summary(updated);
@@ -283,7 +289,8 @@ export class SessionService {
         const permission = this.permissions.decideRecord(permissionId, request.decision);
         const session = this.requireSession(permission.sessionId);
         const updated =
-          session.status === 'waiting_permission'
+          session.status === 'waiting_permission' &&
+          !this.permissions.hasOtherPendingForSession(session.id, permission.id)
             ? this.database.sessions.updateStatus(session.id, 'running', this.now().toISOString())!
             : session;
         const response = {
@@ -333,6 +340,12 @@ export class SessionService {
     if (session.status !== 'running' && session.status !== 'interrupted') {
       return null;
     }
+    if (
+      session.status === 'interrupted' &&
+      !this.database.sessions.canResumeInterrupted(sessionId)
+    ) {
+      return null;
+    }
 
     const cwd = this.projects.resolveForExecution(session.projectId);
     const running =
@@ -352,8 +365,10 @@ export class SessionService {
   ): Promise<void> {
     const assistantMessageId = randomUUID();
     const toolIds = new Map<string, string>();
+    const completedToolIds = new Set<string>();
     let deltaSequence = 0;
     let assistantMessagePersisted = false;
+    let terminalEventSeen = false;
     try {
       const session = this.requireSession(sessionId);
       for await (const event of this.adapter.runTurn({
@@ -374,15 +389,40 @@ export class SessionService {
             type: 'session.updated',
             payload: { session: this.summary(waiting) },
           });
+          let localToolId: string | null = null;
+          if (permissionRequest.toolCallId) {
+            localToolId = toolIds.get(permissionRequest.toolCallId) ?? null;
+            if (!localToolId) {
+              localToolId = randomUUID();
+              toolIds.set(permissionRequest.toolCallId, localToolId);
+              const tool = this.database.toolCalls.create({
+                id: localToolId,
+                sessionId,
+                toolName: permissionRequest.toolName,
+                inputJson: JSON.stringify(permissionRequest.input),
+                outputJson: null,
+                status: 'running',
+                createdAt: this.now().toISOString(),
+                completedAt: null,
+              });
+              this.events.persist({
+                sessionId,
+                requestId,
+                type: 'tool.started',
+                payload: { toolCall: serializeToolCall(tool) },
+              });
+            }
+          }
           const pending = this.permissions.request(sessionId, requestId, {
             ...permissionRequest,
-            toolCallId: permissionRequest.toolCallId
-              ? (toolIds.get(permissionRequest.toolCallId) ?? null)
-              : null,
+            toolCallId: localToolId,
           });
           const decision = await pending.decision;
           const current = this.requireSession(sessionId);
-          if (current.status === 'waiting_permission') {
+          if (
+            current.status === 'waiting_permission' &&
+            !this.permissions.hasPendingForSession(sessionId)
+          ) {
             const running = this.database.sessions.updateStatus(
               sessionId,
               'running',
@@ -399,7 +439,17 @@ export class SessionService {
         },
       })) {
         if (controller.signal.aborted) return;
-        if (event.type === 'assistant.delta') {
+        if (event.type === 'session.started') {
+          const currentClaudeSessionId = this.requireSession(sessionId).claudeSessionId;
+          if (currentClaudeSessionId && currentClaudeSessionId !== event.claudeSessionId) {
+            throw new Error('Claude resumed with a different session ID.');
+          }
+          this.database.sessions.updateClaudeSessionId(
+            sessionId,
+            event.claudeSessionId,
+            this.now().toISOString(),
+          );
+        } else if (event.type === 'assistant.delta') {
           this.events.transient({
             sessionId,
             requestId,
@@ -427,25 +477,28 @@ export class SessionService {
             payload: { message: serializeMessage(message) },
           });
         } else if (event.type === 'tool.started') {
-          const localId = randomUUID();
-          toolIds.set(event.toolCallId, localId);
-          const tool = this.database.toolCalls.create({
-            id: localId,
-            sessionId,
-            toolName: event.toolName,
-            inputJson: JSON.stringify(event.input),
-            outputJson: null,
-            status: 'running',
-            createdAt: this.now().toISOString(),
-            completedAt: null,
-          });
-          this.events.persist({
-            sessionId,
-            requestId,
-            type: 'tool.started',
-            payload: { toolCall: serializeToolCall(tool) },
-          });
+          if (!toolIds.has(event.toolCallId)) {
+            const localId = randomUUID();
+            toolIds.set(event.toolCallId, localId);
+            const tool = this.database.toolCalls.create({
+              id: localId,
+              sessionId,
+              toolName: event.toolName,
+              inputJson: JSON.stringify(event.input),
+              outputJson: null,
+              status: 'running',
+              createdAt: this.now().toISOString(),
+              completedAt: null,
+            });
+            this.events.persist({
+              sessionId,
+              requestId,
+              type: 'tool.started',
+              payload: { toolCall: serializeToolCall(tool) },
+            });
+          }
         } else if (event.type === 'tool.completed') {
+          if (completedToolIds.has(event.toolCallId)) continue;
           const localId = toolIds.get(event.toolCallId);
           if (!localId) continue;
           const tool = this.database.toolCalls.complete(
@@ -460,7 +513,9 @@ export class SessionService {
             type: 'tool.completed',
             payload: { toolCall: serializeToolCall(tool) },
           });
+          completedToolIds.add(event.toolCallId);
         } else if (event.type === 'turn.completed') {
+          terminalEventSeen = true;
           if (event.claudeSessionId) {
             this.database.sessions.updateClaudeSessionId(
               sessionId,
@@ -483,8 +538,17 @@ export class SessionService {
             },
           });
         } else if (event.type === 'turn.failed') {
+          terminalEventSeen = true;
           this.failTurn(sessionId, requestId, event.message);
+          break;
         }
+      }
+      if (!controller.signal.aborted && !terminalEventSeen) {
+        this.failTurn(
+          sessionId,
+          requestId,
+          'Claude event stream ended before a result was received.',
+        );
       }
     } catch (error) {
       if (!controller.signal.aborted) {
@@ -500,9 +564,9 @@ export class SessionService {
   private failTurn(sessionId: string, requestId: string, message: string): void {
     const current = this.requireSession(sessionId);
     if (current.status === 'interrupted' || current.status === 'archived') return;
-    const interrupted = this.database.sessions.updateStatus(
+    const interrupted = this.database.sessions.interrupt(
       sessionId,
-      'interrupted',
+      'failed',
       this.now().toISOString(),
     )!;
     const safeMessage = message.trim().slice(0, 2_000) || 'Claude turn failed.';

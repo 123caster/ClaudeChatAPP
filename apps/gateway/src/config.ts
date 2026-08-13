@@ -11,11 +11,21 @@ const projectConfigSchema = z
   })
   .strict();
 
+const claudeConfigSchema = z
+  .object({
+    adapter: z.enum(['fake', 'agent-sdk']).default('fake'),
+    executablePath: z.string().trim().min(1).optional(),
+    model: z.string().trim().min(1).optional(),
+  })
+  .strict()
+  .default({ adapter: 'fake' });
+
 const gatewayConfigFileSchema = z
   .object({
     host: z.string().trim().min(1).default('127.0.0.1'),
     port: z.number().int().min(1).max(65_535).default(43_110),
     databasePath: z.string().trim().min(1).optional(),
+    claude: claudeConfigSchema,
     projects: z.array(projectConfigSchema).min(1),
     pairing: z
       .object({
@@ -58,6 +68,13 @@ export function loadGatewayConfig(
     ...parsed,
     host: process.env.GATEWAY_HOST ?? parsed.host,
     port: environmentPort,
+    claude: {
+      ...parsed.claude,
+      ...(process.env.CLAUDE_CODE_EXECUTABLE
+        ? { executablePath: resolve(process.env.CLAUDE_CODE_EXECUTABLE) }
+        : {}),
+      ...(process.env.CLAUDE_MODEL ? { model: process.env.CLAUDE_MODEL } : {}),
+    },
     databasePath: process.env.GATEWAY_DATABASE_PATH
       ? resolve(process.env.GATEWAY_DATABASE_PATH)
       : parsed.databasePath

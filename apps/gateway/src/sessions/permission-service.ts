@@ -97,6 +97,20 @@ export class PermissionService {
     }
   }
 
+  public hasPendingForSession(sessionId: string): boolean {
+    for (const pending of this.pending.values()) {
+      if (pending.sessionId === sessionId) return true;
+    }
+    return false;
+  }
+
+  public hasOtherPendingForSession(sessionId: string, permissionId: string): boolean {
+    for (const [id, pending] of this.pending) {
+      if (id !== permissionId && pending.sessionId === sessionId) return true;
+    }
+    return false;
+  }
+
   private resolveRecord(
     permissionId: string,
     decision: PermissionDecision,

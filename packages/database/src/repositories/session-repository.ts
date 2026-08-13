@@ -59,6 +59,8 @@ export interface SessionRepository {
   list(options?: SessionListOptions): SessionRecord[];
   create(record: SessionRecord): SessionRecord;
   updateStatus(id: string, status: SessionStatus, updatedAt: string): SessionRecord | null;
+  interrupt(id: string, reason: 'cancelled' | 'failed', updatedAt: string): SessionRecord | null;
+  canResumeInterrupted(id: string): boolean;
   updateClaudeSessionId(
     id: string,
     claudeSessionId: string | null,
@@ -122,11 +124,41 @@ class SqliteSessionRepository implements SessionRepository {
     this.database
       .prepare(
         `UPDATE sessions
-         SET status = $status, updated_at = $updatedAt
+         SET status = $status,
+             updated_at = $updatedAt,
+             interruption_reason = CASE WHEN $status = 'interrupted' THEN interruption_reason ELSE NULL END
          WHERE id = $id`,
       )
       .run({ $id: id, $status: status, $updatedAt: updatedAt });
     return this.get(id);
+  }
+
+  public interrupt(
+    id: string,
+    reason: 'cancelled' | 'failed',
+    updatedAt: string,
+  ): SessionRecord | null {
+    this.database
+      .prepare(
+        `UPDATE sessions
+         SET status = 'interrupted', interruption_reason = $reason, updated_at = $updatedAt
+         WHERE id = $id`,
+      )
+      .run({ $id: id, $reason: reason, $updatedAt: updatedAt });
+    return this.get(id);
+  }
+
+  public canResumeInterrupted(id: string): boolean {
+    const row = this.database
+      .prepare(
+        `SELECT 1 AS resumable
+         FROM sessions
+         WHERE id = $id
+           AND status = 'interrupted'
+           AND (interruption_reason = 'restart' OR interruption_reason IS NULL)`,
+      )
+      .get({ $id: id }) as { resumable: number } | undefined;
+    return row?.resumable === 1;
   }
 
   public updateClaudeSessionId(
@@ -148,7 +180,7 @@ class SqliteSessionRepository implements SessionRepository {
     const result = this.database
       .prepare(
         `UPDATE sessions
-         SET status = 'interrupted', updated_at = $updatedAt
+         SET status = 'interrupted', interruption_reason = 'restart', updated_at = $updatedAt
          WHERE status IN ('running', 'waiting_permission') AND archived_at IS NULL`,
       )
       .run({ $updatedAt: updatedAt });

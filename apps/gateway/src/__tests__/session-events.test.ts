@@ -103,8 +103,11 @@ describe('session HTTP and resumable events', () => {
 
     expect(first.statusCode).toBe(201);
     expect(second.statusCode).toBe(201);
-    expect(second.json()).toEqual(first.json());
     const sessionId = (first.json() as { session: { id: string } }).session.id;
+    expect(second.json()).toMatchObject({
+      requestId: payload.requestId,
+      session: { id: sessionId },
+    });
     await waitForSessionStatus(context, sessionId, 'idle');
 
     const list = await context.app.inject({
@@ -299,6 +302,44 @@ describe('session HTTP and resumable events', () => {
     expect(cancelled.statusCode).toBe(200);
     expect(cancelled.json()).toMatchObject({ session: { status: 'interrupted' } });
     expect(context.database.permissions.listUnresolved()).toEqual([]);
+
+    const replayed = await context.app.inject({
+      method: 'POST',
+      url: '/v1/sessions',
+      headers: { authorization: `Bearer ${context.token}` },
+      payload: {
+        requestId: 'cancel-session-1',
+        projectId: context.projectId,
+        message: 'Write a file',
+      },
+    });
+    expect(replayed.statusCode).toBe(201);
+    expect(replayed.json()).toMatchObject({ session: { status: 'interrupted' } });
+  });
+
+  it('persists the Claude session ID before a turn finishes', async () => {
+    const context = createContext();
+    context.adapter.enqueue([
+      { type: 'session_start', claudeSessionId: 'claude-early-1' },
+      {
+        type: 'permission',
+        request: { toolCallId: 'tool-1', toolName: 'Write', input: { path: 'blocked.txt' } },
+      },
+    ]);
+    const created = await context.app.inject({
+      method: 'POST',
+      url: '/v1/sessions',
+      headers: { authorization: `Bearer ${context.token}` },
+      payload: {
+        requestId: 'early-session-id-1',
+        projectId: context.projectId,
+        message: 'Write a file',
+      },
+    });
+    const sessionId = (created.json() as { session: { id: string } }).session.id;
+    await waitForSessionStatus(context, sessionId, 'waiting_permission');
+    expect(context.database.sessions.get(sessionId)?.claudeSessionId).toBe('claude-early-1');
+    expect(context.database.permissions.listUnresolved()[0]?.toolCallId).toBeTruthy();
   });
 
   it('resumes an interrupted idempotent create without duplicating the user message', async () => {

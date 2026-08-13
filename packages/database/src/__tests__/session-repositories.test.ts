@@ -65,6 +65,9 @@ describe('session repositories', () => {
     expect(database.sessions.get('running')).toMatchObject({ status: 'interrupted' });
     expect(database.sessions.get('waiting')).toMatchObject({ status: 'interrupted' });
     expect(database.sessions.get('idle')).toMatchObject({ status: 'idle' });
+    expect(database.sessions.canResumeInterrupted('running')).toBe(true);
+    database.sessions.interrupt('running', 'cancelled', '2026-08-13T09:01:00.000Z');
+    expect(database.sessions.canResumeInterrupted('running')).toBe(false);
     closeDatabase(database);
   });
 

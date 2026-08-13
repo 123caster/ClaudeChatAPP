@@ -33,7 +33,7 @@ describe('database', () => {
       'write_requests',
     ]);
     expect(database.prepare('SELECT COUNT(*) AS count FROM schema_migrations').get()).toMatchObject(
-      { count: 4 },
+      { count: 5 },
     );
 
     database.close();

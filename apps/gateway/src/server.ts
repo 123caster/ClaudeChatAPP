@@ -3,6 +3,9 @@ import { closeDatabase, createDatabase } from '@claude-chat/database';
 import { buildApp } from './app.js';
 import { DeviceAuthService } from './auth/device-auth-service.js';
 import { PairingCodeService } from './auth/pairing-code-service.js';
+import { AgentSdkClaudeAdapter } from './claude/agent-sdk-adapter.js';
+import type { ClaudeAdapter } from './claude/claude-adapter.js';
+import { ClaudeHealthMonitor } from './claude/claude-health.js';
 import { FakeClaudeAdapter } from './claude/fake-claude-adapter.js';
 import { loadGatewayConfig } from './config.js';
 import { EventStore } from './events/event-store.js';
@@ -20,11 +23,26 @@ const pairingCodes = new PairingCodeService(config.pairing);
 const pairing = deviceAuth.hasActiveDevice() ? null : pairingCodes.issue();
 const eventStream = new EventStream();
 const events = new EventStore(database.events, eventStream);
-const sessions = new SessionService(database, projects, new FakeClaudeAdapter(), events);
+const adapter: ClaudeAdapter =
+  config.claude.adapter === 'agent-sdk'
+    ? new AgentSdkClaudeAdapter({
+        ...(config.claude.executablePath ? { executablePath: config.claude.executablePath } : {}),
+        ...(config.claude.model ? { model: config.claude.model } : {}),
+      })
+    : new FakeClaudeAdapter();
+const claudeHealth = new ClaudeHealthMonitor(
+  config.claude.executablePath ?? (process.platform === 'win32' ? 'claude.cmd' : 'claude'),
+);
+void claudeHealth.refresh();
+const sessions = new SessionService(database, projects, adapter, events);
 const recovery = sessions.recoverOnStartup();
 
 const app = buildApp({
   logger: true,
+  claudeHealth: () =>
+    config.claude.adapter === 'fake'
+      ? { status: 'ready', message: 'Fake Claude adapter is active.' }
+      : claudeHealth.snapshot(),
   services: { deviceAuth, pairingCodes, projects, events, eventStream, sessions },
 });
 app.addHook('onClose', async () => {

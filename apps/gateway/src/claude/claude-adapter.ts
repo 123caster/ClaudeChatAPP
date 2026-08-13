@@ -11,6 +11,7 @@ export type ClaudePermissionRequest = {
 };
 
 export type ClaudeDomainEvent =
+  | { type: 'session.started'; claudeSessionId: string }
   | { type: 'assistant.delta'; text: string }
   | { type: 'assistant.completed'; text: string }
   | { type: 'tool.started'; toolCallId: string; toolName: string; input: unknown }

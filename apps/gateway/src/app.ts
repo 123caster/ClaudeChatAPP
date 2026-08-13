@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance } from 'fastify';
+import type { HealthResponse } from '@claude-chat/protocol';
 
 import type { DeviceAuthService } from './auth/device-auth-service.js';
 import type { PairingCodeService } from './auth/pairing-code-service.js';
@@ -25,6 +26,7 @@ export type GatewayServices = {
 export type BuildAppOptions = {
   logger?: boolean;
   gatewayVersion?: string;
+  claudeHealth?: () => HealthResponse['claude'] | Promise<HealthResponse['claude']>;
   services?: GatewayServices;
 };
 
@@ -34,6 +36,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   registerHealthRoute(app, {
     gatewayVersion: options.gatewayVersion ?? GATEWAY_VERSION,
     pairingAvailable: () => options.services?.pairingCodes.isAvailable() ?? false,
+    claudeHealth: options.claudeHealth ?? (() => ({ status: 'starting' })),
   });
 
   if (options.services) {
