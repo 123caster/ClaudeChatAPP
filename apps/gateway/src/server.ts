@@ -1,13 +1,24 @@
+import { closeDatabase, createDatabase } from '@claude-chat/database';
+
 import { buildApp } from './app.js';
+import { DeviceAuthService } from './auth/device-auth-service.js';
+import { PairingCodeService } from './auth/pairing-code-service.js';
+import { loadGatewayConfig } from './config.js';
+import { ProjectRegistry } from './projects/project-registry.js';
 
-const host = process.env.GATEWAY_HOST ?? '127.0.0.1';
-const port = Number.parseInt(process.env.GATEWAY_PORT ?? '43110', 10);
+const config = loadGatewayConfig();
+const database = createDatabase(config.databasePath);
+const projects = new ProjectRegistry(database.projects);
+projects.synchronize(config.projects);
 
-if (!Number.isInteger(port) || port < 1 || port > 65_535) {
-  throw new Error('GATEWAY_PORT must be an integer between 1 and 65535.');
-}
+const deviceAuth = new DeviceAuthService(database.devices);
+const pairingCodes = new PairingCodeService(config.pairing);
+const pairing = deviceAuth.hasActiveDevice() ? null : pairingCodes.issue();
 
-const app = buildApp({ logger: true });
+const app = buildApp({ logger: true, services: { deviceAuth, pairingCodes, projects } });
+app.addHook('onClose', async () => {
+  closeDatabase(database);
+});
 
 const shutdown = async (): Promise<void> => {
   await app.close();
@@ -22,4 +33,10 @@ process.once('SIGTERM', () => {
   void shutdown();
 });
 
-await app.listen({ host, port });
+await app.listen({ host: config.host, port: config.port });
+
+if (pairing) {
+  process.stdout.write(
+    `ClaudeChatAPP pairing code: ${pairing.code} (expires ${pairing.expiresAt.toISOString()})\n`,
+  );
+}
