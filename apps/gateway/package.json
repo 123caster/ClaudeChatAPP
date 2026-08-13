@@ -13,8 +13,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@claude-chat/database": "workspace:*",
     "@claude-chat/protocol": "workspace:*",
-    "fastify": "^5.7.4"
+    "fastify": "^5.7.4",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",

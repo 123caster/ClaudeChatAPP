@@ -1,0 +1,16 @@
+{
+  "host": "0.0.0.0",
+  "port": 43110,
+  "databasePath": "./data/gateway.db",
+  "projects": [
+    {
+      "displayName": "ClaudeChatAPP",
+      "path": "D:\\ouyang\\Projects\\ClaudeChatAPP"
+    }
+  ],
+  "pairing": {
+    "expiresInSeconds": 300,
+    "maxFailures": 5,
+    "failureWindowSeconds": 300
+  }
+}

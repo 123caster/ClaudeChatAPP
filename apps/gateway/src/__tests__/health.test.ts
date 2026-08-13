@@ -25,6 +25,15 @@ describe('GET /v1/health', () => {
       claude: {
         status: 'starting',
       },
+      config: {
+        status: 'ready',
+      },
+      database: {
+        status: 'ready',
+      },
+      pairing: {
+        available: false,
+      },
     });
   });
 });
