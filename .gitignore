@@ -1,0 +1,22 @@
+node_modules/
+dist/
+coverage/
+.expo/
+.env
+.env.*
+!.env.example
+*.db
+*.db-shm
+*.db-wal
+*.log
+
+# Local-only agent and workspace data must never enter this repository.
+.claude/
+.codex-staging/
+first_loves/
+claudechatapp-bootstrap-staging/
+
+# Native build output.
+apps/mobile/android/.gradle/
+apps/mobile/android/app/build/
+apps/mobile/ios/Pods/
