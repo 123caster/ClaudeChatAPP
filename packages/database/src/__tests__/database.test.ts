@@ -30,9 +30,10 @@ describe('database', () => {
       'schema_migrations',
       'sessions',
       'tool_calls',
+      'write_requests',
     ]);
     expect(database.prepare('SELECT COUNT(*) AS count FROM schema_migrations').get()).toMatchObject(
-      { count: 3 },
+      { count: 4 },
     );
 
     database.close();
