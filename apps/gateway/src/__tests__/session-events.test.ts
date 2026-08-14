@@ -80,6 +80,37 @@ async function waitForSessionStatus(
   throw new Error(`Session ${sessionId} did not reach ${status}.`);
 }
 
+async function openEventSocket(
+  context: TestContext,
+  address: string,
+  after = 0,
+): Promise<{ messages: EventEnvelope[]; socket: WebSocket }> {
+  const messages: EventEnvelope[] = [];
+  const socket = new WebSocket(`${address.replace('http', 'ws')}/v1/events?after=${after}`, {
+    headers: { Authorization: `Bearer ${context.token}` },
+  });
+  socket.on('message', (data) => {
+    messages.push(eventEnvelopeSchema.parse(JSON.parse(data.toString()) as unknown));
+  });
+  await new Promise<void>((resolve, reject) => {
+    socket.once('open', resolve);
+    socket.once('error', reject);
+  });
+  return { messages, socket };
+}
+
+async function waitForEvent(
+  messages: EventEnvelope[],
+  predicate: (event: EventEnvelope) => boolean,
+): Promise<EventEnvelope> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const event = messages.find(predicate);
+    if (event) return event;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error('Expected WebSocket event was not received.');
+}
+
 describe('session HTTP and resumable events', () => {
   it('creates, runs and idempotently replays a fake Claude session', async () => {
     const context = createContext();
@@ -185,6 +216,65 @@ describe('session HTTP and resumable events', () => {
     socket.close();
   });
 
+  it('streams multiple deltas and persists one final assistant message', async () => {
+    const context = createContext();
+    context.adapter.enqueue([
+      { type: 'delta', text: 'Hello' },
+      { type: 'delta', text: ' mobile' },
+      { type: 'complete_message', text: 'Hello mobile' },
+      { type: 'complete_turn' },
+    ]);
+    const address = await context.app.listen({ host: '127.0.0.1', port: 0 });
+    const { messages, socket } = await openEventSocket(context, address);
+
+    const created = await context.app.inject({
+      method: 'POST',
+      url: '/v1/sessions',
+      headers: { authorization: `Bearer ${context.token}` },
+      payload: {
+        requestId: 'stream-session-1',
+        projectId: context.projectId,
+        message: 'Stream a greeting',
+      },
+    });
+    const sessionId = (created.json() as { session: { id: string } }).session.id;
+    await waitForSessionStatus(context, sessionId, 'idle');
+    await waitForEvent(
+      messages,
+      (event) => event.sessionId === sessionId && event.type === 'turn.completed',
+    );
+
+    const sessionEvents = messages.filter((event) => event.sessionId === sessionId);
+    expect(
+      sessionEvents
+        .filter((event) => event.type === 'assistant.delta')
+        .map((event) => (event.type === 'assistant.delta' ? event.payload.delta : '')),
+    ).toEqual(['Hello', ' mobile']);
+    expect(sessionEvents.map((event) => event.type)).toEqual([
+      'session.created',
+      'message.created',
+      'assistant.delta',
+      'assistant.delta',
+      'message.created',
+      'turn.completed',
+    ]);
+
+    const detail = await context.app.inject({
+      method: 'GET',
+      url: `/v1/sessions/${sessionId}`,
+      headers: { authorization: `Bearer ${context.token}` },
+    });
+    expect(detail.json()).toMatchObject({
+      session: {
+        messages: [
+          { role: 'user', content: 'Stream a greeting', isPartial: false },
+          { role: 'assistant', content: 'Hello mobile', isPartial: false },
+        ],
+      },
+    });
+    socket.close();
+  });
+
   it('pages WebSocket replay through more than one thousand retained events', async () => {
     const context = createContext();
     for (let index = 1; index <= 1_005; index += 1) {
@@ -269,6 +359,110 @@ describe('session HTTP and resumable events', () => {
     });
     expect(duplicate.statusCode).toBe(200);
     expect(duplicate.json()).toEqual(decided.json());
+  });
+
+  it('denies a tool permission and fails the turn without completing the tool', async () => {
+    const context = createContext();
+    context.adapter.enqueue([
+      {
+        type: 'tool_start',
+        toolCallId: 'sdk-tool-deny-1',
+        toolName: 'Write',
+        input: { path: 'blocked.txt' },
+      },
+      {
+        type: 'permission',
+        request: {
+          toolCallId: 'sdk-tool-deny-1',
+          toolName: 'Write',
+          input: { path: 'blocked.txt' },
+          reason: 'Modify a file',
+        },
+      },
+      { type: 'tool_complete', toolCallId: 'sdk-tool-deny-1', output: 'must not run' },
+      { type: 'complete_turn' },
+    ]);
+    const created = await context.app.inject({
+      method: 'POST',
+      url: '/v1/sessions',
+      headers: { authorization: `Bearer ${context.token}` },
+      payload: {
+        requestId: 'deny-session-1',
+        projectId: context.projectId,
+        message: 'Write a file',
+      },
+    });
+    const sessionId = (created.json() as { session: { id: string } }).session.id;
+    await waitForSessionStatus(context, sessionId, 'waiting_permission');
+    const [permission] = context.database.permissions.listUnresolved();
+
+    const denied = await context.app.inject({
+      method: 'POST',
+      url: `/v1/permissions/${permission!.id}/decision`,
+      headers: { authorization: `Bearer ${context.token}` },
+      payload: { requestId: 'deny-permission-1', decision: 'deny' },
+    });
+    expect(denied.statusCode).toBe(200);
+    expect(denied.json()).toMatchObject({
+      permission: { status: 'resolved', decision: 'deny' },
+    });
+    await waitForSessionStatus(context, sessionId, 'interrupted');
+
+    const eventTypes = context.database.events
+      .listAfter(0, 100)
+      .filter((event) => event.sessionId === sessionId)
+      .map((event) => event.type);
+    expect(eventTypes).toContain('permission.resolved');
+    expect(eventTypes).toContain('turn.failed');
+    expect(eventTypes).not.toContain('tool.completed');
+    expect(eventTypes).not.toContain('turn.completed');
+  });
+
+  it('reconnects after the last durable event without replaying transient deltas', async () => {
+    const context = createContext();
+    const address = await context.app.listen({ host: '127.0.0.1', port: 0 });
+    context.events.persist({
+      sessionId: null,
+      requestId: null,
+      type: 'server.notice',
+      payload: { level: 'info', code: 'BEFORE', message: 'Before disconnect' },
+    });
+    const first = await openEventSocket(context, address);
+    const before = await waitForEvent(
+      first.messages,
+      (event) => event.type === 'server.notice' && event.payload.code === 'BEFORE',
+    );
+    first.socket.close();
+    await new Promise<void>((resolve) => first.socket.once('close', () => resolve()));
+
+    context.events.transient({
+      sessionId: null,
+      requestId: null,
+      type: 'server.notice',
+      payload: { level: 'info', code: 'TRANSIENT', message: 'Do not replay' },
+    });
+    context.events.persist({
+      sessionId: null,
+      requestId: null,
+      type: 'server.notice',
+      payload: { level: 'info', code: 'AFTER', message: 'After disconnect' },
+    });
+
+    const second = await openEventSocket(context, address, before.eventId);
+    await waitForEvent(
+      second.messages,
+      (event) => event.type === 'server.notice' && event.payload.code === 'AFTER',
+    );
+    const notices = second.messages
+      .filter((event) => event.type === 'server.notice')
+      .map((event) => (event.type === 'server.notice' ? event.payload.code : ''));
+    expect(notices).toEqual(['AFTER']);
+    expect(
+      second.messages
+        .filter((event) => event.type !== 'connection.ready' && event.eventId > 0)
+        .map((event) => event.eventId),
+    ).toEqual([before.eventId + 1]);
+    second.socket.close();
   });
 
   it('cancels a turn while Claude is waiting for permission', async () => {
