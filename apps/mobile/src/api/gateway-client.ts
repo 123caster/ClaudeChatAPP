@@ -1,6 +1,7 @@
 import {
   archiveSessionResponseSchema,
   cancelSessionResponseSchema,
+  createProjectResponseSchema,
   createSessionResponseSchema,
   errorResponseSchema,
   healthResponseSchema,
@@ -10,6 +11,8 @@ import {
   sessionDetailResponseSchema,
   sessionsResponseSchema,
   sendMessageResponseSchema,
+  type CreateProjectRequest,
+  type CreateProjectResponse,
   type CreateSessionRequest,
   type CreateSessionResponse,
   type HealthResponse,
@@ -69,6 +72,7 @@ type RequestOptions<T> = {
   method?: 'GET' | 'POST';
   body?: unknown;
   token?: string;
+  apiKey?: string;
   schema: Parser<T>;
 };
 
@@ -79,10 +83,11 @@ export class GatewayClient {
     return this.request('/v1/health', { schema: healthResponseSchema });
   }
 
-  public pair(code: string, deviceName: string): Promise<PairingExchangeResponse> {
+  public pair(code: string, deviceName: string, apiKey?: string): Promise<PairingExchangeResponse> {
     return this.request('/v1/pairing/exchange', {
       method: 'POST',
       body: { code, deviceName },
+      apiKey,
       schema: pairingExchangeResponseSchema,
     });
   }
@@ -90,6 +95,15 @@ export class GatewayClient {
   public async projects(token: string): Promise<ProjectSummary[]> {
     const response = await this.request('/v1/projects', { token, schema: projectsResponseSchema });
     return response.projects;
+  }
+
+  public createProject(token: string, input: CreateProjectRequest): Promise<CreateProjectResponse> {
+    return this.request('/v1/projects', {
+      method: 'POST',
+      token,
+      body: input,
+      schema: createProjectResponseSchema,
+    });
   }
 
   public async sessions(token: string): Promise<SessionSummary[]> {
@@ -174,6 +188,7 @@ export class GatewayClient {
           Accept: 'application/json',
           ...(options.body === undefined ? {} : { 'Content-Type': 'application/json' }),
           ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
+          ...(options.apiKey ? { 'X-API-Key': options.apiKey } : {}),
         },
         body: options.body === undefined ? undefined : JSON.stringify(options.body),
         signal: controller.signal,
@@ -220,7 +235,7 @@ export function connectionErrorMessage(error: unknown): string {
     PAIRING_RATE_LIMITED: '尝试次数过多，请稍后再试。',
     DEVICE_ALREADY_PAIRED: '已有设备完成配对。请先在电脑上撤销原设备。',
     PROTOCOL_ERROR: 'App 与 Gateway 版本不兼容，请更新后重试。',
-    UNAUTHORIZED: '设备授权已失效，请在电脑上生成新的配对码。',
+    UNAUTHORIZED: '设备授权已失效或 API Key 不正确，请检查后重试。',
   };
   return messages[error.code] ?? '连接失败，请稍后重试。';
 }

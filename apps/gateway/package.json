@@ -9,6 +9,7 @@
     "claude:smoke": "tsc -p scripts/tsconfig.json && tsx scripts/claude-smoke.ts",
     "dev": "tsx watch src/server.ts",
     "lint": "eslint src scripts --max-warnings=0",
+    "pairing:reset": "tsx scripts/reset-pairing.ts",
     "start": "node dist/server.js",
     "test": "vitest run src",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p scripts/tsconfig.json"

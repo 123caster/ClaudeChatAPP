@@ -34,6 +34,7 @@ export interface DeviceRepository {
   create(record: Omit<DeviceRecord, 'lastSeenAt' | 'revokedAt'>): DeviceRecord;
   findActiveByTokenHash(tokenHash: string): DeviceRecord | null;
   revoke(id: string, revokedAt: string): boolean;
+  revokeAllActive(revokedAt: string): number;
   touch(id: string, lastSeenAt: string): void;
 }
 
@@ -94,6 +95,17 @@ class SqliteDeviceRepository implements DeviceRepository {
       )
       .run({ $id: id, $revokedAt: revokedAt });
     return result.changes === 1 || result.changes === 1n;
+  }
+
+  public revokeAllActive(revokedAt: string): number {
+    const result = this.database
+      .prepare(
+        `UPDATE devices
+         SET revoked_at = $revokedAt
+         WHERE revoked_at IS NULL`,
+      )
+      .run({ $revokedAt: revokedAt });
+    return Number(result.changes);
   }
 }
 

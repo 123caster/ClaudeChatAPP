@@ -52,6 +52,7 @@ export const pairingExchangeRequestSchema = z
   .object({
     code: z.string().regex(/^\d{6}$/),
     deviceName: z.string().trim().min(1).max(80),
+    apiKey: z.string().trim().min(1).max(256).optional(),
   })
   .strict();
 
@@ -81,6 +82,22 @@ export const projectSummarySchema = z
 export const projectsResponseSchema = z
   .object({
     projects: z.array(projectSummarySchema),
+  })
+  .strict();
+
+export const createProjectRequestSchema = z
+  .object({
+    requestId: requestIdSchema,
+    displayName: z.string().trim().min(1).max(80),
+    parentProjectId: z.string().trim().min(1).max(128),
+    folderName: z.string().trim().min(1).max(200),
+  })
+  .strict();
+
+export const createProjectResponseSchema = z
+  .object({
+    requestId: requestIdSchema,
+    project: projectSummarySchema,
   })
   .strict();
 
@@ -185,6 +202,8 @@ export type PairedDevice = z.infer<typeof pairedDeviceSchema>;
 export type PairingExchangeResponse = z.infer<typeof pairingExchangeResponseSchema>;
 export type ProjectSummary = z.infer<typeof projectSummarySchema>;
 export type ProjectsResponse = z.infer<typeof projectsResponseSchema>;
+export type CreateProjectRequest = z.infer<typeof createProjectRequestSchema>;
+export type CreateProjectResponse = z.infer<typeof createProjectResponseSchema>;
 export type SessionsResponse = z.infer<typeof sessionsResponseSchema>;
 export type SessionDetailResponse = z.infer<typeof sessionDetailResponseSchema>;
 export type CreateSessionRequest = z.infer<typeof createSessionRequestSchema>;

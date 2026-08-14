@@ -9,6 +9,7 @@ import { ProjectRegistry } from '../projects/project-registry.js';
 import {
   prepareAllowedRoot,
   ProjectPathError,
+  resolveChildPath,
   validateProjectDirectory,
 } from '../projects/path-policy.js';
 
@@ -94,5 +95,51 @@ describe.skipIf(process.platform !== 'win32')('Windows project path policy', () 
     renameSync(root, movedRoot);
     symlinkSync(outside, root, 'junction');
     expect(() => registry.resolveForExecution(project!.id)).toThrowError(ProjectPathError);
+  });
+
+  it('resolves a child path inside the root and rejects traversal or separators', () => {
+    const root = temporaryDirectory();
+    const preparedRoot = prepareAllowedRoot(root);
+
+    expect(resolveChildPath(preparedRoot, 'new-project')).toBe(join(preparedRoot, 'new-project'));
+    expect(() => resolveChildPath(preparedRoot, '..')).toThrowError(ProjectPathError);
+    expect(() => resolveChildPath(preparedRoot, '../escape')).toThrowError(ProjectPathError);
+    expect(() => resolveChildPath(preparedRoot, 'a/b')).toThrowError(ProjectPathError);
+    expect(() => resolveChildPath(preparedRoot, 'a\\b')).toThrowError(ProjectPathError);
+    expect(() => resolveChildPath(preparedRoot, '.')).toThrowError(ProjectPathError);
+    expect(() => resolveChildPath(preparedRoot, '')).toThrowError(ProjectPathError);
+    expect(() => resolveChildPath(preparedRoot, 'C:evil')).toThrowError(ProjectPathError);
+  });
+
+  it('addUserProject persists a user project and keeps it after re-synchronize', () => {
+    const root = temporaryDirectory();
+    let records: ProjectRecord[] = [];
+    const repository: ProjectRepository = {
+      list: () => records,
+      synchronize: (nextRecords) => {
+        const userRecords = records.filter((record) => record.origin === 'user');
+        records = [
+          ...userRecords,
+          ...nextRecords.map((record) => ({ ...record, origin: 'config' as const })),
+        ];
+      },
+      upsert: (record) => {
+        records = [...records.filter((existing) => existing.rootPath !== record.rootPath), record];
+      },
+    };
+    const registry = new ProjectRegistry(repository, () => new Date('2026-08-13T08:00:00Z'));
+    const [configured] = registry.synchronize([{ displayName: 'Root', path: root }]);
+
+    const created = registry.addUserProject({
+      displayName: 'New Project',
+      parentProjectId: configured!.id,
+      folderName: 'child',
+    });
+
+    expect(created.origin).toBe('user');
+    expect(registry.resolveForExecution(created.id)).toBe(created.rootPath);
+
+    registry.synchronize([{ displayName: 'Root', path: root }]);
+    expect(registry.list().some((record) => record.id === created.id)).toBe(true);
   });
 });

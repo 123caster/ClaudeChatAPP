@@ -32,7 +32,7 @@ type ConnectionState = {
   token: string | null;
   health: HealthResponse | null;
   error: string | null;
-  pair: (gatewayUrl: string, code: string) => Promise<void>;
+  pair: (gatewayUrl: string, code: string, apiKey?: string) => Promise<void>;
   retry: () => Promise<void>;
   resetPairing: (message?: string) => Promise<void>;
   setTransportOnline: (online: boolean) => void;
@@ -91,7 +91,7 @@ export function ConnectionProvider({ children }: PropsWithChildren) {
       });
   }, [validateStoredConnection]);
 
-  const pair = useCallback(async (inputUrl: string, code: string) => {
+  const pair = useCallback(async (inputUrl: string, code: string, apiKey?: string) => {
     const normalized = normalizeGatewayUrl(inputUrl);
     if (!/^\d{6}$/.test(code)) throw new Error('请输入 6 位配对码');
     setPhase('pairing');
@@ -104,7 +104,7 @@ export function ConnectionProvider({ children }: PropsWithChildren) {
       if (healthResponse.protocolVersion !== PROTOCOL_VERSION) {
         throw new GatewayRequestError('PROTOCOL_ERROR', 'Protocol version mismatch.', null);
       }
-      const paired = await client.pair(code, defaultDeviceName());
+      const paired = await client.pair(code, defaultDeviceName(), apiKey);
       await savePairedConnection(normalized, paired.token);
       setToken(paired.token);
       setHealth(healthResponse);

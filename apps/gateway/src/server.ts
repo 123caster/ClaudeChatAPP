@@ -10,6 +10,7 @@ import { FakeClaudeAdapter } from './claude/fake-claude-adapter.js';
 import { loadGatewayConfig } from './config.js';
 import { EventStore } from './events/event-store.js';
 import { EventStream } from './events/event-stream.js';
+import { gatewayUrls } from './network-addresses.js';
 import { ProjectRegistry } from './projects/project-registry.js';
 import { SessionService } from './sessions/session-service.js';
 
@@ -39,6 +40,7 @@ const recovery = sessions.recoverOnStartup();
 
 const app = buildApp({
   logger: true,
+  apiKey: config.apiKey,
   claudeHealth: () =>
     config.claude.adapter === 'fake'
       ? { status: 'ready', message: 'Fake Claude adapter is active.' }
@@ -62,7 +64,23 @@ process.once('SIGTERM', () => {
   void shutdown();
 });
 
+if (config.claude.adapter !== 'fake' && config.host === '0.0.0.0' && !config.apiKey) {
+  process.stderr.write(
+    'WARNING: The gateway is accepting network connections without an API key. ' +
+      'Set GATEWAY_API_KEY before exposing it outside your local network.\n',
+  );
+}
+
 await app.listen({ host: config.host, port: config.port });
+
+const addresses = gatewayUrls(config.host, config.port);
+if (addresses.length === 0) {
+  process.stdout.write(
+    `Gateway is listening on port ${config.port}, but no LAN IPv4 address was detected.\n`,
+  );
+} else {
+  process.stdout.write(`Enter this Gateway address on the phone:\n${addresses.join('\n')}\n`);
+}
 
 if (pairing) {
   process.stdout.write(

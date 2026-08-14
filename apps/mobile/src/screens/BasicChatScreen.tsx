@@ -10,7 +10,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  KeyboardAvoidingView,
+  Keyboard,
   Platform,
   Pressable,
   StyleSheet,
@@ -18,6 +18,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { GatewayClient, createRequestId } from '@/api/gateway-client';
 import { ConnectionBanner } from '@/components/ConnectionBanner';
@@ -37,10 +38,12 @@ import { spacing } from '@/theme/spacing';
 export function BasicChatScreen({ sessionId }: { sessionId: string }) {
   const connection = useConnection();
   const sessions = useSessions();
+  const insets = useSafeAreaInsets();
   const [state, dispatch] = useReducer(chatReducer, initialChatState);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const loadedRef = useRef(false);
   const pendingEventsRef = useRef<EventEnvelope[]>([]);
   const listRef = useRef<FlatList<TimelineItem>>(null);
@@ -48,6 +51,16 @@ export function BasicChatScreen({ sessionId }: { sessionId: string }) {
     () => (connection.gatewayUrl ? new GatewayClient(connection.gatewayUrl) : null),
     [connection.gatewayUrl],
   );
+
+  useEffect(() => {
+    const show = (event: { endCoordinates: { height: number } }) =>
+      setKeyboardHeight(event.endCoordinates.height);
+    const hide = () => setKeyboardHeight(0);
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const subs = [Keyboard.addListener(showEvent, show), Keyboard.addListener(hideEvent, hide)];
+    return () => subs.forEach((sub) => sub.remove());
+  }, []);
 
   useEffect(() => {
     loadedRef.current = false;
@@ -143,11 +156,10 @@ export function BasicChatScreen({ sessionId }: { sessionId: string }) {
     }
   };
 
+  const composerPadding = Math.max(0, keyboardHeight - insets.bottom);
+
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={styles.page}
-    >
+    <View style={styles.page}>
       <View style={styles.header}>
         <Pressable
           accessibilityLabel="返回"
@@ -198,7 +210,7 @@ export function BasicChatScreen({ sessionId }: { sessionId: string }) {
           )}
         />
       )}
-      <View style={styles.composer}>
+      <View style={[styles.composer, { paddingBottom: composerPadding }]}>
         <TextInput
           editable={!busy && online && !running}
           maxLength={100_000}
@@ -228,7 +240,7 @@ export function BasicChatScreen({ sessionId }: { sessionId: string }) {
           )}
         </Pressable>
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 

@@ -7,7 +7,8 @@ export type ProjectPathErrorCode =
   | 'ALLOWED_ROOT_MUST_NOT_BE_LINK'
   | 'PATH_NOT_FOUND'
   | 'PATH_MUST_BE_DIRECTORY'
-  | 'PATH_OUTSIDE_ALLOWED_ROOTS';
+  | 'PATH_OUTSIDE_ALLOWED_ROOTS'
+  | 'INVALID_CHILD_NAME';
 
 export class ProjectPathError extends Error {
   public constructor(
@@ -94,4 +95,34 @@ export function validateProjectDirectory(
     );
   }
   return candidateRealPath;
+}
+
+export function sanitizeChildName(childName: string): string {
+  const trimmed = childName.trim();
+  if (
+    trimmed.length === 0 ||
+    trimmed === '.' ||
+    trimmed === '..' ||
+    trimmed.includes('\0') ||
+    /[\\/:*?"<>|]/.test(trimmed) ||
+    /^[A-Za-z]:/.test(trimmed)
+  ) {
+    throw new ProjectPathError(
+      'INVALID_CHILD_NAME',
+      'Folder name must be a single directory name without path separators or drive letters.',
+    );
+  }
+  return trimmed;
+}
+
+export function resolveChildPath(allowedRootRealPath: string, childName: string): string {
+  const safeName = sanitizeChildName(childName);
+  const candidate = windowsPath.resolve(windowsPath.join(allowedRootRealPath, safeName));
+  if (candidate === allowedRootRealPath || !isPathContained(allowedRootRealPath, candidate)) {
+    throw new ProjectPathError(
+      'PATH_OUTSIDE_ALLOWED_ROOTS',
+      'New folder resolves outside the allowed root.',
+    );
+  }
+  return candidate;
 }

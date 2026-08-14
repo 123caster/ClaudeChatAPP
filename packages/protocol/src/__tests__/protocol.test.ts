@@ -207,7 +207,7 @@ describe('HTTP schemas', () => {
           {
             id: 'project_123',
             displayName: 'ClaudeChatAPP',
-            rootPath: 'D:\\ouyang\\Projects\\ClaudeChatAPP',
+            rootPath: 'D:\\projects\\ClaudeChatAPP',
           },
         ],
       }).projects,
@@ -219,7 +219,7 @@ describe('HTTP schemas', () => {
           {
             id: 'project_123',
             displayName: 'ClaudeChatAPP',
-            rootPath: 'D:\\ouyang\\Projects\\ClaudeChatAPP',
+            rootPath: 'D:\\projects\\ClaudeChatAPP',
             secret: 'not-allowed',
           },
         ],

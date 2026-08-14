@@ -3,6 +3,7 @@ import type { HealthResponse } from '@claude-chat/protocol';
 
 import type { DeviceAuthService } from './auth/device-auth-service.js';
 import type { PairingCodeService } from './auth/pairing-code-service.js';
+import { registerApiKeyHook } from './auth/api-key.js';
 import type { ProjectRegistry } from './projects/project-registry.js';
 import type { EventStore } from './events/event-store.js';
 import type { EventStream } from './events/event-stream.js';
@@ -26,12 +27,15 @@ export type GatewayServices = {
 export type BuildAppOptions = {
   logger?: boolean;
   gatewayVersion?: string;
+  apiKey?: string;
   claudeHealth?: () => HealthResponse['claude'] | Promise<HealthResponse['claude']>;
   services?: GatewayServices;
 };
 
 export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   const app = Fastify({ logger: options.logger ?? false });
+
+  registerApiKeyHook(app, options.apiKey);
 
   registerHealthRoute(app, {
     gatewayVersion: options.gatewayVersion ?? GATEWAY_VERSION,

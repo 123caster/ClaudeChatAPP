@@ -24,6 +24,7 @@ const gatewayConfigFileSchema = z
   .object({
     host: z.string().trim().min(1).default('127.0.0.1'),
     port: z.number().int().min(1).max(65_535).default(43_110),
+    apiKey: z.string().trim().min(1).max(256).optional(),
     databasePath: z.string().trim().min(1).optional(),
     claude: claudeConfigSchema,
     projects: z.array(projectConfigSchema).min(1),
@@ -63,11 +64,15 @@ export function loadGatewayConfig(
   const environmentPort = process.env.GATEWAY_PORT
     ? z.coerce.number().int().min(1).max(65_535).parse(process.env.GATEWAY_PORT)
     : parsed.port;
+  const environmentApiKey = process.env.GATEWAY_API_KEY
+    ? z.string().trim().min(1).max(256).parse(process.env.GATEWAY_API_KEY)
+    : parsed.apiKey;
 
   return {
     ...parsed,
     host: process.env.GATEWAY_HOST ?? parsed.host,
     port: environmentPort,
+    apiKey: environmentApiKey,
     claude: {
       ...parsed.claude,
       ...(process.env.CLAUDE_CODE_EXECUTABLE

@@ -19,6 +19,7 @@ export function ConnectionScreen() {
   const connection = useConnection();
   const [gatewayUrl, setGatewayUrl] = useState(connection.gatewayUrl);
   const [code, setCode] = useState('');
+  const [apiKey, setApiKey] = useState('');
   const [fieldError, setFieldError] = useState<string | null>(null);
   const busy = connection.phase === 'pairing';
 
@@ -29,8 +30,9 @@ export function ConnectionScreen() {
   const submit = async () => {
     setFieldError(null);
     try {
-      await connection.pair(gatewayUrl, code);
+      await connection.pair(gatewayUrl, code, apiKey.trim() || undefined);
       setCode('');
+      setApiKey('');
     } catch (error) {
       if (error instanceof Error && !('code' in error)) setFieldError(error.message);
     }
@@ -70,6 +72,21 @@ export function ConnectionScreen() {
           style={styles.input}
           value={code}
         />
+        <Text style={styles.label}>API Key（可选）</Text>
+        <TextInput
+          autoCapitalize="none"
+          autoCorrect={false}
+          editable={!busy}
+          onChangeText={setApiKey}
+          placeholder="公网部署时填入服务器配置的密钥"
+          placeholderTextColor={colors.muted}
+          secureTextEntry={false}
+          style={styles.input}
+          value={apiKey}
+        />
+        <Text style={styles.hint}>
+          仅在通过公网访问时填写；本地局域网连接可留空。
+        </Text>
         {fieldError || connection.error ? (
           <Text accessibilityRole="alert" style={styles.error}>
             {fieldError ?? connection.error}
@@ -123,6 +140,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.control,
   },
   error: { color: colors.danger, fontSize: 13, lineHeight: 19, marginTop: spacing.control },
+  hint: { color: colors.muted, fontSize: 12, lineHeight: 17, marginTop: spacing.sm },
   button: {
     alignItems: 'center',
     backgroundColor: colors.brand,

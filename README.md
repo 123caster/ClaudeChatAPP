@@ -30,4 +30,17 @@ $env:GATEWAY_CONFIG = 'D:\path\to\config.json'
 pnpm --filter @claude-chat/gateway start
 ```
 
+Gateway prints one or more LAN addresses such as `http://192.168.1.20:43110` and a
+six-digit pairing code. Enter both on the Android connection screen. Windows may ask
+whether Node.js can accept private-network connections; allow private networks only.
+
+If the phone is replaced, the app data is cleared, or the device token is lost, stop
+Gateway and revoke the old pairing without deleting sessions:
+
+```powershell
+$env:GATEWAY_CONFIG = 'D:\path\to\config.json'
+pnpm --filter @claude-chat/gateway pairing:reset
+pnpm --filter @claude-chat/gateway start
+```
+
 `GET /v1/health` reports whether Claude Code is ready, signed out, or unavailable. Unit tests keep the fake adapter; real account and network smoke checks are explicit scripts rather than part of the normal test suite.

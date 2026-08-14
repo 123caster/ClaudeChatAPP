@@ -33,7 +33,7 @@ describe('database', () => {
       'write_requests',
     ]);
     expect(database.prepare('SELECT COUNT(*) AS count FROM schema_migrations').get()).toMatchObject(
-      { count: 5 },
+      { count: 6 },
     );
 
     database.close();
@@ -112,6 +112,22 @@ describe('database', () => {
     closeDatabase(database);
   });
 
+  it('revokes every active device without deleting device history', () => {
+    const database = createDatabase(':memory:');
+    database.devices.create({
+      id: 'device-reset-1',
+      name: 'Lost phone',
+      tokenHash: 'lost-token-hash',
+      createdAt: '2026-08-13T08:00:00.000Z',
+    });
+
+    expect(database.devices.revokeAllActive('2026-08-13T09:00:00.000Z')).toBe(1);
+    expect(database.devices.countActive()).toBe(0);
+    expect(database.devices.findActiveByTokenHash('lost-token-hash')).toBeNull();
+    expect(database.devices.revokeAllActive('2026-08-13T10:00:00.000Z')).toBe(0);
+    closeDatabase(database);
+  });
+
   it('enforces one active device at the database boundary', () => {
     const database = createDatabase(':memory:');
     const devices = database.devices;
@@ -143,13 +159,13 @@ describe('database', () => {
     projects.upsert({
       id: 'project-1',
       displayName: 'ClaudeChatAPP',
-      rootPath: 'D:\\ouyang\\Projects\\ClaudeChatAPP',
+      rootPath: 'D:\\projects\\ClaudeChatAPP',
       createdAt: '2026-08-13T08:00:00.000Z',
     });
     projects.upsert({
       id: 'ignored-on-conflict',
       displayName: 'Renamed project',
-      rootPath: 'D:\\ouyang\\Projects\\ClaudeChatAPP',
+      rootPath: 'D:\\projects\\ClaudeChatAPP',
       createdAt: '2026-08-13T09:00:00.000Z',
     });
 
@@ -157,7 +173,8 @@ describe('database', () => {
       {
         id: 'project-1',
         displayName: 'Renamed project',
-        rootPath: 'D:\\ouyang\\Projects\\ClaudeChatAPP',
+        rootPath: 'D:\\projects\\ClaudeChatAPP',
+        origin: 'config',
         createdAt: '2026-08-13T08:00:00.000Z',
       },
     ]);
@@ -172,12 +189,14 @@ describe('database', () => {
       id: 'project-1',
       displayName: 'First',
       rootPath: 'D:\\Projects\\first',
+      origin: 'config' as const,
       createdAt: '2026-08-13T08:00:00.000Z',
     };
     const second = {
       id: 'project-2',
       displayName: 'Second',
       rootPath: 'D:\\Projects\\second',
+      origin: 'config' as const,
       createdAt: '2026-08-13T08:00:00.000Z',
     };
 

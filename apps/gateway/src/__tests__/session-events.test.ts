@@ -29,7 +29,7 @@ function createContext(): TestContext {
   const database = createDatabase(':memory:');
   const projects = new ProjectRegistry(database.projects, () => new Date('2026-08-13T08:00:00Z'));
   const [project] = projects.synchronize([
-    { displayName: 'ClaudeChatAPP', path: 'D:\\ouyang\\Projects\\ClaudeChatAPP' },
+    { displayName: 'ClaudeChatAPP', path: 'D:\\projects\\ClaudeChatAPP' },
   ]);
   const deviceAuth = new DeviceAuthService(
     database.devices,

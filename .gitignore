@@ -20,3 +20,6 @@ claudechatapp-bootstrap-staging/
 apps/mobile/android/.gradle/
 apps/mobile/android/app/build/
 apps/mobile/ios/Pods/
+
+# Local gateway runtime config (contains machine-specific paths).
+apps/gateway/config.json

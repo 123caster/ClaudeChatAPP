@@ -1,5 +1,6 @@
 import NetInfo from '@react-native-community/netinfo';
 import type {
+  CreateProjectRequest,
   CreateSessionRequest,
   EventEnvelope,
   ProjectSummary,
@@ -31,6 +32,11 @@ type SessionState = {
   eventState: 'idle' | 'connecting' | 'open' | 'closed';
   refresh: () => Promise<void>;
   create: (projectId: string, message: string, requestId?: string) => Promise<string>;
+  createProject: (
+    displayName: string,
+    parentProjectId: string,
+    folderName: string,
+  ) => Promise<ProjectSummary>;
   archive: (sessionId: string) => Promise<void>;
   subscribe: (listener: (event: EventEnvelope) => void) => () => void;
 };
@@ -175,9 +181,47 @@ export function SessionProvider({ children }: PropsWithChildren) {
     [gatewayUrl, token],
   );
 
+  const createProject = useCallback(
+    async (displayName: string, parentProjectId: string, folderName: string) => {
+      if (!gatewayUrl || !token) throw new Error('Gateway is not connected.');
+      const request: CreateProjectRequest = {
+        requestId: createRequestId(),
+        displayName: displayName.trim(),
+        parentProjectId,
+        folderName: folderName.trim(),
+      };
+      const response = await new GatewayClient(gatewayUrl).createProject(token, request);
+      setProjects((current) => [...current, response.project]);
+      return response.project;
+    },
+    [gatewayUrl, token],
+  );
+
   const value = useMemo(
-    () => ({ sessions, projects, loading, error, eventState, refresh, create, archive, subscribe }),
-    [sessions, projects, loading, error, eventState, refresh, create, archive, subscribe],
+    () => ({
+      sessions,
+      projects,
+      loading,
+      error,
+      eventState,
+      refresh,
+      create,
+      createProject,
+      archive,
+      subscribe,
+    }),
+    [
+      sessions,
+      projects,
+      loading,
+      error,
+      eventState,
+      refresh,
+      create,
+      createProject,
+      archive,
+      subscribe,
+    ],
   );
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }

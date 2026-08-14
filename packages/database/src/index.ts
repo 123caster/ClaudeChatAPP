@@ -17,7 +17,11 @@ export {
   type PermissionRecord,
   type PermissionRepository,
 } from './repositories/permission-repository.js';
-export type { ProjectRecord, ProjectRepository } from './repositories/project-repository.js';
+export type {
+  ProjectOrigin,
+  ProjectRecord,
+  ProjectRepository,
+} from './repositories/project-repository.js';
 export {
   sessionStatuses,
   type SessionListOptions,

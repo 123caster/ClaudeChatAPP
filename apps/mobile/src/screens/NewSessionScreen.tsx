@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -26,12 +27,42 @@ export function NewSessionScreen() {
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [creatingProject, setCreatingProject] = useState(false);
+  const [folderName, setFolderName] = useState('');
+  const [folderParentId, setFolderParentId] = useState<string | null>(null);
+  const [folderError, setFolderError] = useState<string | null>(null);
   const requestId = useRef(createRequestId());
   const online = connection.phase === 'connected';
 
   useEffect(() => {
     if (store.projects.length === 1) setProjectId(store.projects[0]?.id ?? null);
   }, [store.projects]);
+
+  const openFolderModal = () => {
+    setFolderName('');
+    setFolderParentId(projectId ?? store.projects[0]?.id ?? null);
+    setFolderError(null);
+    setCreatingProject(true);
+  };
+
+  const submitFolder = async () => {
+    if (!folderName.trim() || !folderParentId || creatingProject) return;
+    setBusy(true);
+    setFolderError(null);
+    try {
+      const project = await store.createProject(
+        folderName.trim(),
+        folderParentId,
+        folderName.trim(),
+      );
+      setProjectId(project.id);
+      setCreatingProject(false);
+    } catch {
+      setFolderError('新建文件夹失败，请确认名称有效且不重名。');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const submit = async () => {
     if (!projectId || !message.trim() || busy) return;
@@ -83,6 +114,16 @@ export function NewSessionScreen() {
         ) : (
           <ProjectPicker onSelect={setProjectId} projects={store.projects} selectedId={projectId} />
         )}
+        {store.projects.length > 0 && online ? (
+          <Pressable
+            accessibilityRole="button"
+            disabled={busy}
+            onPress={openFolderModal}
+            style={({ pressed }) => [styles.folderButton, pressed && styles.buttonPressed]}
+          >
+            <Text style={styles.folderButtonText}>＋ 新建文件夹</Text>
+          </Pressable>
+        ) : null}
         <Text style={styles.label}>第一条任务</Text>
         <TextInput
           editable={!busy}
@@ -113,6 +154,76 @@ export function NewSessionScreen() {
           <Text style={styles.buttonText}>{busy ? '创建中' : '创建会话'}</Text>
         </Pressable>
       </ScrollView>
+      <Modal
+        animationType="fade"
+        onRequestClose={() => setCreatingProject(false)}
+        transparent
+        visible={creatingProject}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>新建文件夹</Text>
+            <Text style={styles.label}>文件夹名</Text>
+            <TextInput
+              autoFocus
+              editable={!busy}
+              onChangeText={setFolderName}
+              placeholder="例如 my-project"
+              placeholderTextColor={colors.muted}
+              style={styles.textarea}
+              value={folderName}
+            />
+            <Text style={styles.label}>父项目（根目录）</Text>
+            <ScrollView style={styles.modalPicker} keyboardShouldPersistTaps="handled">
+              {store.projects.map((project) => {
+                const selected = project.id === folderParentId;
+                return (
+                  <Pressable
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: selected }}
+                    key={project.id}
+                    onPress={() => setFolderParentId(project.id)}
+                    style={[styles.modalOption, selected && styles.modalOptionSelected]}
+                  >
+                    <Text style={styles.modalOptionText}>{project.displayName}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+            {folderError ? (
+              <Text accessibilityRole="alert" style={styles.error}>
+                {folderError}
+              </Text>
+            ) : null}
+            <View style={styles.modalActions}>
+              <Pressable
+                accessibilityRole="button"
+                disabled={busy}
+                onPress={() => setCreatingProject(false)}
+                style={[styles.modalButton, styles.modalCancel]}
+              >
+                <Text style={styles.modalCancelText}>取消</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                disabled={busy || !folderName.trim() || !folderParentId}
+                onPress={() => void submitFolder()}
+                style={[
+                  styles.modalButton,
+                  styles.modalConfirm,
+                  (busy || !folderName.trim() || !folderParentId) && styles.buttonDisabled,
+                ]}
+              >
+                {busy ? (
+                  <ActivityIndicator color={colors.textOnBrand} size="small" />
+                ) : (
+                  <Text style={styles.modalConfirmText}>创建</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -184,4 +295,49 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: spacing.sm,
   },
+  folderButton: {
+    alignItems: 'center',
+    borderColor: colors.brand,
+    borderRadius: 6,
+    borderWidth: 1,
+    height: 40,
+    justifyContent: 'center',
+    marginTop: spacing.control,
+  },
+  folderButtonText: { color: colors.brand, fontSize: 14, fontWeight: '600' },
+  modalBackdrop: {
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    flex: 1,
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  modalCard: {
+    backgroundColor: colors.background,
+    borderRadius: 10,
+    padding: spacing.lg,
+  },
+  modalTitle: { color: colors.text, fontSize: 17, fontWeight: '600', marginBottom: spacing.sm },
+  modalPicker: { maxHeight: 180 },
+  modalOption: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginBottom: spacing.xs,
+    paddingHorizontal: spacing.control,
+    paddingVertical: spacing.sm,
+  },
+  modalOptionSelected: { borderColor: colors.brand, borderWidth: 1.5 },
+  modalOptionText: { color: colors.text, fontSize: 14 },
+  modalActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg },
+  modalButton: {
+    alignItems: 'center',
+    borderRadius: 6,
+    flex: 1,
+    height: 44,
+    justifyContent: 'center',
+  },
+  modalCancel: { borderColor: colors.border, borderWidth: 1 },
+  modalCancelText: { color: colors.text, fontSize: 15, fontWeight: '600' },
+  modalConfirm: { backgroundColor: colors.brand },
+  modalConfirmText: { color: colors.textOnBrand, fontSize: 15, fontWeight: '600' },
 });

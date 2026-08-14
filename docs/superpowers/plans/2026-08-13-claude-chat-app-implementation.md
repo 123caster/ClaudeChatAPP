@@ -28,14 +28,14 @@ PowerShell 会阻止执行 npm 全局安装生成的 `.ps1` 文件，因此所�
 
 ```text
 C:\Program Files\nodejs\npm.cmd
-C:\Users\developer\AppData\Roaming\npm\pnpm.cmd
-C:\Users\developer\AppData\Roaming\npm\claude.cmd
+C:\Users\<your-user>\AppData\Roaming\npm\pnpm.cmd
+C:\Users\<your-user>\AppData\Roaming\npm\claude.cmd
 ```
 
 Codex 自带 pnpm 可作为备用：
 
 ```text
-C:\Users\developer\.cache\codex-runtimes\codex-primary-runtime\dependencies\bin\fallback\pnpm.cmd
+C:\Users\<your-user>\.cache\codex-runtimes\codex-primary-runtime\dependencies\bin\fallback\pnpm.cmd
 ```
 
 当前缺失：

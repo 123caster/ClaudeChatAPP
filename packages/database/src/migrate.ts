@@ -4,6 +4,7 @@ import { projectEnabledMigration } from './migrations/002-project-enabled.js';
 import { singleActiveDeviceMigration } from './migrations/003-single-active-device.js';
 import { sessionEventRepositoriesMigration } from './migrations/004-session-event-repositories.js';
 import { sessionInterruptionReasonMigration } from './migrations/005-session-interruption-reason.js';
+import { projectOriginMigration } from './migrations/006-project-origin.js';
 
 export type Migration = {
   version: number;
@@ -16,6 +17,7 @@ const migrations: Migration[] = [
   { version: 3, sql: singleActiveDeviceMigration },
   { version: 4, sql: sessionEventRepositoriesMigration },
   { version: 5, sql: sessionInterruptionReasonMigration },
+  { version: 6, sql: projectOriginMigration },
 ];
 
 export function runMigrations(

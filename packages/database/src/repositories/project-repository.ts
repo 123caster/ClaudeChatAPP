@@ -1,9 +1,12 @@
 import type { DatabaseConnection } from '../connection.js';
 
+export type ProjectOrigin = 'config' | 'user';
+
 export type ProjectRecord = {
   id: string;
   displayName: string;
   rootPath: string;
+  origin?: ProjectOrigin;
   createdAt: string;
 };
 
@@ -11,6 +14,7 @@ type ProjectRow = {
   id: string;
   display_name: string;
   root_path: string;
+  origin: ProjectOrigin;
   created_at: string;
 };
 
@@ -19,6 +23,7 @@ function mapProject(row: ProjectRow): ProjectRecord {
     id: row.id,
     displayName: row.display_name,
     rootPath: row.root_path,
+    origin: row.origin,
     createdAt: row.created_at,
   };
 }
@@ -39,7 +44,7 @@ class SqliteProjectRepository implements ProjectRepository {
   public synchronize(records: readonly ProjectRecord[]): void {
     this.database.exec('BEGIN IMMEDIATE');
     try {
-      this.database.exec('UPDATE projects SET enabled = 0');
+      this.database.exec(`UPDATE projects SET enabled = 0 WHERE origin = 'config'`);
       for (const record of records) {
         this.upsertStatement(record);
       }
@@ -55,16 +60,18 @@ class SqliteProjectRepository implements ProjectRepository {
   private upsertStatement(record: ProjectRecord): void {
     this.database
       .prepare(
-        `INSERT INTO projects(id, display_name, root_path, created_at, enabled)
-         VALUES ($id, $displayName, $rootPath, $createdAt, 1)
+        `INSERT INTO projects(id, display_name, root_path, created_at, enabled, origin)
+         VALUES ($id, $displayName, $rootPath, $createdAt, 1, $origin)
          ON CONFLICT(root_path) DO UPDATE SET
            display_name = excluded.display_name,
+           origin = excluded.origin,
            enabled = 1`,
       )
       .run({
         $createdAt: record.createdAt,
         $displayName: record.displayName,
         $id: record.id,
+        $origin: record.origin ?? 'config',
         $rootPath: record.rootPath,
       });
   }
@@ -72,7 +79,7 @@ class SqliteProjectRepository implements ProjectRepository {
   public list(): ProjectRecord[] {
     const rows = this.database
       .prepare(
-        `SELECT id, display_name, root_path, created_at
+        `SELECT id, display_name, root_path, origin, created_at
          FROM projects
          WHERE enabled = 1
          ORDER BY display_name COLLATE NOCASE, id`,

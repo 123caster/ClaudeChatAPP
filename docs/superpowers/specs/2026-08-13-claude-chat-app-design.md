@@ -216,8 +216,8 @@ Gateway 重启后，数据库中遗留的 `running` 或 `waiting_permission` 会
 Gateway 配置包含一个或多个允许根目录，例如：
 
 ```text
-D:\workspace\Projects
-D:\workspace\Documents\ProjectPool
+D:\projects
+D:\documents\ProjectPool
 ```
 
 创建会话时：
