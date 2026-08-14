@@ -1,5 +1,12 @@
 import type { SessionSummary } from '@claude-chat/protocol';
 
+export function connectionBannerState(
+  eventState: 'idle' | 'connecting' | 'open' | 'closed',
+): 'connecting' | 'offline' | null {
+  if (eventState === 'open') return null;
+  return eventState === 'closed' ? 'offline' : 'connecting';
+}
+
 export function sortSessions(sessions: SessionSummary[]): SessionSummary[] {
   return sessions
     .filter((session) => session.status !== 'archived')

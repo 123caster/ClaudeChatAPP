@@ -1,6 +1,6 @@
 import type { SessionSummary } from '@claude-chat/protocol';
 
-import { mergeSession, sortSessions } from '@/state/session-list';
+import { connectionBannerState, mergeSession, sortSessions } from '@/state/session-list';
 
 function session(overrides: Partial<SessionSummary> = {}): SessionSummary {
   return {
@@ -17,6 +17,13 @@ function session(overrides: Partial<SessionSummary> = {}): SessionSummary {
 }
 
 describe('session list state', () => {
+  it('shows connecting until the socket explicitly closes', () => {
+    expect(connectionBannerState('idle')).toBe('connecting');
+    expect(connectionBannerState('connecting')).toBe('connecting');
+    expect(connectionBannerState('open')).toBeNull();
+    expect(connectionBannerState('closed')).toBe('offline');
+  });
+
   it('sorts active sessions and omits archived sessions', () => {
     const result = sortSessions([
       session({ id: '00000000-0000-4000-8000-000000000001' }),

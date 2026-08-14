@@ -29,6 +29,7 @@ import {
   type TimelineItem,
 } from '@/state/chat-state';
 import { useSessions } from '@/state/session-store';
+import { connectionBannerState } from '@/state/session-list';
 import { loadCachedSession, saveCachedSession } from '@/storage/chat-cache';
 import { colors } from '@/theme/colors';
 import { spacing } from '@/theme/spacing';
@@ -84,6 +85,7 @@ export function BasicChatScreen({ sessionId }: { sessionId: string }) {
   const timeline = useMemo(() => (detail ? buildTimeline(detail) : []), [detail]);
   const online = connection.phase === 'connected';
   const running = detail?.status === 'running' || detail?.status === 'waiting_permission';
+  const bannerState = connectionBannerState(sessions.eventState);
 
   const send = async () => {
     const message = draft.trim();
@@ -163,9 +165,7 @@ export function BasicChatScreen({ sessionId }: { sessionId: string }) {
         </View>
         <View style={styles.iconButton} />
       </View>
-      {sessions.eventState !== 'open' ? (
-        <ConnectionBanner state={sessions.eventState === 'connecting' ? 'connecting' : 'offline'} />
-      ) : null}
+      {bannerState ? <ConnectionBanner state={bannerState} /> : null}
       {error || state.notice ? (
         <Pressable
           accessibilityRole="alert"
