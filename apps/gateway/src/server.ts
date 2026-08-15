@@ -1,8 +1,6 @@
 import { closeDatabase, createDatabase } from '@claude-chat/database';
 
 import { buildApp } from './app.js';
-import { DeviceAuthService } from './auth/device-auth-service.js';
-import { PairingCodeService } from './auth/pairing-code-service.js';
 import { AgentSdkClaudeAdapter } from './claude/agent-sdk-adapter.js';
 import type { ClaudeAdapter } from './claude/claude-adapter.js';
 import { ClaudeHealthMonitor } from './claude/claude-health.js';
@@ -19,9 +17,6 @@ const database = createDatabase(config.databasePath);
 const projects = new ProjectRegistry(database.projects);
 projects.synchronize(config.projects);
 
-const deviceAuth = new DeviceAuthService(database.devices);
-const pairingCodes = new PairingCodeService(config.pairing);
-const pairing = deviceAuth.hasActiveDevice() ? null : pairingCodes.issue();
 const eventStream = new EventStream();
 const events = new EventStore(database.events, eventStream);
 const adapter: ClaudeAdapter =
@@ -45,7 +40,7 @@ const app = buildApp({
     config.claude.adapter === 'fake'
       ? { status: 'ready', message: 'Fake Claude adapter is active.' }
       : claudeHealth.snapshot(),
-  services: { deviceAuth, pairingCodes, projects, events, eventStream, sessions },
+  services: { projects, events, eventStream, sessions },
 });
 app.addHook('onClose', async () => {
   closeDatabase(database);
@@ -80,12 +75,6 @@ if (addresses.length === 0) {
   );
 } else {
   process.stdout.write(`Enter this Gateway address on the phone:\n${addresses.join('\n')}\n`);
-}
-
-if (pairing) {
-  process.stdout.write(
-    `ClaudeChatAPP pairing code: ${pairing.code} (expires ${pairing.expiresAt.toISOString()})\n`,
-  );
 }
 
 if (recovery.sessions > 0 || recovery.permissions > 0) {

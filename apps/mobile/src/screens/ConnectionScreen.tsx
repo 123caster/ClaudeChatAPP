@@ -11,27 +11,21 @@ import {
   View,
 } from 'react-native';
 
+import { GATEWAY_URL } from '@/config/gateway';
 import { useConnection } from '@/state/connection-store';
 import { colors } from '@/theme/colors';
 import { spacing } from '@/theme/spacing';
 
 export function ConnectionScreen() {
   const connection = useConnection();
-  const [gatewayUrl, setGatewayUrl] = useState(connection.gatewayUrl);
-  const [code, setCode] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [fieldError, setFieldError] = useState<string | null>(null);
-  const busy = connection.phase === 'pairing';
-
-  useEffect(() => {
-    if (connection.gatewayUrl && !gatewayUrl) setGatewayUrl(connection.gatewayUrl);
-  }, [connection.gatewayUrl, gatewayUrl]);
+  const busy = connection.phase === 'connecting';
 
   const submit = async () => {
     setFieldError(null);
     try {
-      await connection.pair(gatewayUrl, code, apiKey.trim() || undefined);
-      setCode('');
+      await connection.connect(apiKey);
       setApiKey('');
     } catch (error) {
       if (error instanceof Error && !('code' in error)) setFieldError(error.message);
@@ -45,48 +39,27 @@ export function ConnectionScreen() {
     >
       <View style={styles.header}>
         <Text accessibilityRole="header" style={styles.headerTitle}>
-          连接电脑
+          连接服务器
         </Text>
       </View>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text style={styles.label}>Gateway 地址</Text>
-        <TextInput
-          autoCapitalize="none"
-          autoCorrect={false}
-          editable={!busy}
-          keyboardType="url"
-          onChangeText={setGatewayUrl}
-          placeholder="http://192.168.1.20:4310"
-          placeholderTextColor={colors.muted}
-          style={styles.input}
-          value={gatewayUrl}
-        />
-        <Text style={styles.label}>配对码</Text>
-        <TextInput
-          editable={!busy}
-          keyboardType="number-pad"
-          maxLength={6}
-          onChangeText={(value) => setCode(value.replace(/\D/g, ''))}
-          placeholder="电脑上显示的 6 位数字"
-          placeholderTextColor={colors.muted}
-          style={styles.input}
-          value={code}
-        />
-        <Text style={styles.label}>API Key（可选）</Text>
+        <Text style={styles.label}>服务器地址</Text>
+        <Text selectable style={styles.address}>
+          {GATEWAY_URL}
+        </Text>
+        <Text style={styles.label}>API Key</Text>
         <TextInput
           autoCapitalize="none"
           autoCorrect={false}
           editable={!busy}
           onChangeText={setApiKey}
-          placeholder="公网部署时填入服务器配置的密钥"
+          placeholder="填入服务器配置的密钥"
           placeholderTextColor={colors.muted}
-          secureTextEntry={false}
+          secureTextEntry
           style={styles.input}
           value={apiKey}
         />
-        <Text style={styles.hint}>
-          仅在通过公网访问时填写；本地局域网连接可留空。
-        </Text>
+        <Text style={styles.hint}>登录后密钥会安全保存在本机，下次自动连接。</Text>
         {fieldError || connection.error ? (
           <Text accessibilityRole="alert" style={styles.error}>
             {fieldError ?? connection.error}
@@ -94,11 +67,11 @@ export function ConnectionScreen() {
         ) : null}
         <Pressable
           accessibilityRole="button"
-          disabled={busy || !gatewayUrl.trim() || code.length !== 6}
+          disabled={busy || !apiKey.trim()}
           onPress={() => void submit()}
           style={({ pressed }) => [
             styles.button,
-            (busy || !gatewayUrl.trim() || code.length !== 6) && styles.buttonDisabled,
+            (busy || !apiKey.trim()) && styles.buttonDisabled,
             pressed && styles.buttonPressed,
           ]}
         >
@@ -138,6 +111,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     minHeight: 48,
     paddingHorizontal: spacing.control,
+  },
+  address: {
+    backgroundColor: colors.mutedSurface,
+    borderRadius: 6,
+    color: colors.text,
+    fontSize: 14,
+    fontFamily: Platform.select({ android: 'monospace', default: undefined }),
+    paddingHorizontal: spacing.control,
+    paddingVertical: 12,
   },
   error: { color: colors.danger, fontSize: 13, lineHeight: 19, marginTop: spacing.control },
   hint: { color: colors.muted, fontSize: 12, lineHeight: 17, marginTop: spacing.sm },

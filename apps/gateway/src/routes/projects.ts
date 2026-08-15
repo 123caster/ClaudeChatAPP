@@ -5,14 +5,11 @@ import {
 } from '@claude-chat/protocol';
 import type { FastifyInstance } from 'fastify';
 
-import { createAuthenticationHook } from '../auth/authenticate.js';
-import type { DeviceAuthService } from '../auth/device-auth-service.js';
 import { sendError } from '../http-error.js';
 import { ProjectPathError } from '../projects/path-policy.js';
 import type { ProjectRegistry } from '../projects/project-registry.js';
 
 type ProjectRouteOptions = {
-  deviceAuth: DeviceAuthService;
   projects: ProjectRegistry;
 };
 
@@ -26,15 +23,13 @@ function toSummary(project: { id: string; displayName: string; rootPath: string 
 
 export function registerProjectRoutes(
   app: FastifyInstance,
-  { deviceAuth, projects }: ProjectRouteOptions,
+  { projects }: ProjectRouteOptions,
 ): void {
-  const preHandler = createAuthenticationHook(deviceAuth);
-
-  app.get('/v1/projects', { preHandler }, async (): Promise<ProjectsResponse> => ({
+  app.get('/v1/projects', async (): Promise<ProjectsResponse> => ({
     projects: projects.list().map(toSummary),
   }));
 
-  app.post('/v1/projects', { preHandler }, async (request, reply) => {
+  app.post('/v1/projects', async (request, reply) => {
     const body = createProjectRequestSchema.safeParse(request.body);
     if (!body.success) {
       return sendError(request, reply, 400, 'VALIDATION_ERROR', 'Invalid project request.');

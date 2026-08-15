@@ -1,17 +1,20 @@
 import { closeDatabase, createDatabase, type DatabaseClient } from '@claude-chat/database';
 import { eventEnvelopeSchema, type EventEnvelope } from '@claude-chat/protocol';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 
 import { buildApp } from '../app.js';
-import { DeviceAuthService } from '../auth/device-auth-service.js';
-import { PairingCodeService } from '../auth/pairing-code-service.js';
 import { FakeClaudeAdapter } from '../claude/fake-claude-adapter.js';
 import { EventStore } from '../events/event-store.js';
 import { EventStream } from '../events/event-stream.js';
 import { ProjectRegistry } from '../projects/project-registry.js';
 import { SessionService } from '../sessions/session-service.js';
+
+const API_KEY = 'top-secret-key';
 
 type TestContext = {
   adapter: FakeClaudeAdapter;
@@ -20,28 +23,19 @@ type TestContext = {
   events: EventStore;
   projectId: string;
   projects: ProjectRegistry;
-  token: string;
 };
 
 const contexts: TestContext[] = [];
+const tempRoots: string[] = [];
 
 function createContext(): TestContext {
   const database = createDatabase(':memory:');
+  const projectRoot = mkdtempSync(join(tmpdir(), 'claude-chat-session-'));
+  tempRoots.push(projectRoot);
   const projects = new ProjectRegistry(database.projects, () => new Date('2026-08-13T08:00:00Z'));
   const [project] = projects.synchronize([
-    { displayName: 'ClaudeChatAPP', path: 'D:\\projects\\ClaudeChatAPP' },
+    { displayName: 'ClaudeChatAPP', path: projectRoot },
   ]);
-  const deviceAuth = new DeviceAuthService(
-    database.devices,
-    () => new Date('2026-08-13T08:00:00Z'),
-    () => 'session-test-token-abcdefghijklmnopqrstuvwxyz',
-  );
-  const token = deviceAuth.pair('Test Android').token;
-  const pairingCodes = new PairingCodeService({
-    expiresInSeconds: 300,
-    maxFailures: 5,
-    failureWindowSeconds: 300,
-  });
   const eventStream = new EventStream();
   const events = new EventStore(database.events, eventStream);
   const adapter = new FakeClaudeAdapter();
@@ -49,9 +43,10 @@ function createContext(): TestContext {
   const app = buildApp({
     logger: process.env.DEBUG_WEBSOCKET === '1',
     gatewayVersion: 'test-version',
-    services: { deviceAuth, pairingCodes, projects, events, eventStream, sessions },
+    apiKey: API_KEY,
+    services: { projects, events, eventStream, sessions },
   });
-  const context = { adapter, app, database, events, projectId: project!.id, projects, token };
+  const context = { adapter, app, database, events, projectId: project!.id, projects };
   contexts.push(context);
   return context;
 }
@@ -60,6 +55,9 @@ afterEach(async () => {
   for (const context of contexts.splice(0)) {
     await context.app.close();
     closeDatabase(context.database);
+  }
+  for (const root of tempRoots.splice(0)) {
+    rmSync(root, { recursive: true, force: true });
   }
 });
 
@@ -72,7 +70,7 @@ async function waitForSessionStatus(
     const response = await context.app.inject({
       method: 'GET',
       url: `/v1/sessions/${sessionId}`,
-      headers: { authorization: `Bearer ${context.token}` },
+      headers: { 'x-api-key': API_KEY },
     });
     if ((response.json() as { session: { status: string } }).session.status === status) return;
     await new Promise((resolve) => setTimeout(resolve, 5));
@@ -87,7 +85,7 @@ async function openEventSocket(
 ): Promise<{ messages: EventEnvelope[]; socket: WebSocket }> {
   const messages: EventEnvelope[] = [];
   const socket = new WebSocket(`${address.replace('http', 'ws')}/v1/events?after=${after}`, {
-    headers: { Authorization: `Bearer ${context.token}` },
+    headers: { 'x-api-key': API_KEY },
   });
   socket.on('message', (data) => {
     messages.push(eventEnvelopeSchema.parse(JSON.parse(data.toString()) as unknown));
@@ -122,13 +120,13 @@ describe('session HTTP and resumable events', () => {
     const first = await context.app.inject({
       method: 'POST',
       url: '/v1/sessions',
-      headers: { authorization: `Bearer ${context.token}` },
+      headers: { 'x-api-key': API_KEY },
       payload,
     });
     const second = await context.app.inject({
       method: 'POST',
       url: '/v1/sessions',
-      headers: { authorization: `Bearer ${context.token}` },
+      headers: { 'x-api-key': API_KEY },
       payload,
     });
 
@@ -144,14 +142,14 @@ describe('session HTTP and resumable events', () => {
     const list = await context.app.inject({
       method: 'GET',
       url: '/v1/sessions',
-      headers: { authorization: `Bearer ${context.token}` },
+      headers: { 'x-api-key': API_KEY },
     });
     expect(list.json()).toMatchObject({ sessions: [{ id: sessionId, status: 'idle' }] });
 
     const detail = await context.app.inject({
       method: 'GET',
       url: `/v1/sessions/${sessionId}`,
-      headers: { authorization: `Bearer ${context.token}` },
+      headers: { 'x-api-key': API_KEY },
     });
     expect(detail.json()).toMatchObject({
       session: {
@@ -181,6 +179,7 @@ describe('session HTTP and resumable events', () => {
       unauthorizedSocket.once('unexpected-response', (_request, response) => {
         resolve(response.statusCode ?? 0);
         response.destroy();
+        unauthorizedSocket.terminate();
       });
       unauthorizedSocket.once('error', reject);
     });
@@ -188,7 +187,7 @@ describe('session HTTP and resumable events', () => {
 
     const messages: EventEnvelope[] = [];
     const socket = new WebSocket(`${address.replace('http', 'ws')}/v1/events?after=0`, {
-      headers: { Authorization: `Bearer ${context.token}` },
+      headers: { 'x-api-key': API_KEY },
     });
     socket.on('message', (data) => {
       messages.push(eventEnvelopeSchema.parse(JSON.parse(data.toString()) as unknown));
@@ -230,7 +229,7 @@ describe('session HTTP and resumable events', () => {
     const created = await context.app.inject({
       method: 'POST',
       url: '/v1/sessions',
-      headers: { authorization: `Bearer ${context.token}` },
+      headers: { 'x-api-key': API_KEY },
       payload: {
         requestId: 'stream-session-1',
         projectId: context.projectId,
@@ -262,7 +261,7 @@ describe('session HTTP and resumable events', () => {
     const detail = await context.app.inject({
       method: 'GET',
       url: `/v1/sessions/${sessionId}`,
-      headers: { authorization: `Bearer ${context.token}` },
+      headers: { 'x-api-key': API_KEY },
     });
     expect(detail.json()).toMatchObject({
       session: {
@@ -288,7 +287,7 @@ describe('session HTTP and resumable events', () => {
     const address = await context.app.listen({ host: '127.0.0.1', port: 0 });
     const messages: EventEnvelope[] = [];
     const socket = new WebSocket(`${address.replace('http', 'ws')}/v1/events?after=0`, {
-      headers: { Authorization: `Bearer ${context.token}` },
+      headers: { 'x-api-key': API_KEY },
     });
     socket.on('message', (data) => {
       messages.push(eventEnvelopeSchema.parse(JSON.parse(data.toString()) as unknown));
@@ -327,7 +326,7 @@ describe('session HTTP and resumable events', () => {
     const created = await context.app.inject({
       method: 'POST',
       url: '/v1/sessions',
-      headers: { authorization: `Bearer ${context.token}` },
+      headers: { 'x-api-key': API_KEY },
       payload: {
         requestId: 'permission-session-1',
         projectId: context.projectId,
@@ -342,7 +341,7 @@ describe('session HTTP and resumable events', () => {
     const decided = await context.app.inject({
       method: 'POST',
       url: `/v1/permissions/${permission!.id}/decision`,
-      headers: { authorization: `Bearer ${context.token}` },
+      headers: { 'x-api-key': API_KEY },
       payload: { requestId: 'permission-decision-1', decision: 'allow_once' },
     });
     expect(decided.statusCode).toBe(200);
@@ -354,7 +353,7 @@ describe('session HTTP and resumable events', () => {
     const duplicate = await context.app.inject({
       method: 'POST',
       url: `/v1/permissions/${permission!.id}/decision`,
-      headers: { authorization: `Bearer ${context.token}` },
+      headers: { 'x-api-key': API_KEY },
       payload: { requestId: 'permission-decision-1', decision: 'allow_once' },
     });
     expect(duplicate.statusCode).toBe(200);
@@ -385,7 +384,7 @@ describe('session HTTP and resumable events', () => {
     const created = await context.app.inject({
       method: 'POST',
       url: '/v1/sessions',
-      headers: { authorization: `Bearer ${context.token}` },
+      headers: { 'x-api-key': API_KEY },
       payload: {
         requestId: 'deny-session-1',
         projectId: context.projectId,
@@ -399,7 +398,7 @@ describe('session HTTP and resumable events', () => {
     const denied = await context.app.inject({
       method: 'POST',
       url: `/v1/permissions/${permission!.id}/decision`,
-      headers: { authorization: `Bearer ${context.token}` },
+      headers: { 'x-api-key': API_KEY },
       payload: { requestId: 'deny-permission-1', decision: 'deny' },
     });
     expect(denied.statusCode).toBe(200);
@@ -477,7 +476,7 @@ describe('session HTTP and resumable events', () => {
     const created = await context.app.inject({
       method: 'POST',
       url: '/v1/sessions',
-      headers: { authorization: `Bearer ${context.token}` },
+      headers: { 'x-api-key': API_KEY },
       payload: {
         requestId: 'cancel-session-1',
         projectId: context.projectId,
@@ -490,7 +489,7 @@ describe('session HTTP and resumable events', () => {
     const cancelled = await context.app.inject({
       method: 'POST',
       url: `/v1/sessions/${sessionId}/cancel`,
-      headers: { authorization: `Bearer ${context.token}` },
+      headers: { 'x-api-key': API_KEY },
       payload: { requestId: 'cancel-turn-1' },
     });
     expect(cancelled.statusCode).toBe(200);
@@ -500,7 +499,7 @@ describe('session HTTP and resumable events', () => {
     const replayed = await context.app.inject({
       method: 'POST',
       url: '/v1/sessions',
-      headers: { authorization: `Bearer ${context.token}` },
+      headers: { 'x-api-key': API_KEY },
       payload: {
         requestId: 'cancel-session-1',
         projectId: context.projectId,
@@ -523,7 +522,7 @@ describe('session HTTP and resumable events', () => {
     const created = await context.app.inject({
       method: 'POST',
       url: '/v1/sessions',
-      headers: { authorization: `Bearer ${context.token}` },
+      headers: { 'x-api-key': API_KEY },
       payload: {
         requestId: 'early-session-id-1',
         projectId: context.projectId,
@@ -552,7 +551,7 @@ describe('session HTTP and resumable events', () => {
     const created = await context.app.inject({
       method: 'POST',
       url: '/v1/sessions',
-      headers: { authorization: `Bearer ${context.token}` },
+      headers: { 'x-api-key': API_KEY },
       payload: request,
     });
     const sessionId = (created.json() as { session: { id: string } }).session.id;

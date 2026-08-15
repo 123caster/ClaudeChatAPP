@@ -5,7 +5,6 @@ import {
   createSessionResponseSchema,
   errorResponseSchema,
   healthResponseSchema,
-  pairingExchangeResponseSchema,
   permissionDecisionResponseSchema,
   projectsResponseSchema,
   sessionDetailResponseSchema,
@@ -16,7 +15,6 @@ import {
   type CreateSessionRequest,
   type CreateSessionResponse,
   type HealthResponse,
-  type PairingExchangeResponse,
   type PermissionDecision,
   type PermissionDecisionResponse,
   type ProjectSummary,
@@ -71,7 +69,6 @@ export function createRequestId(): string {
 type RequestOptions<T> = {
   method?: 'GET' | 'POST';
   body?: unknown;
-  token?: string;
   apiKey?: string;
   schema: Parser<T>;
 };
@@ -79,100 +76,95 @@ type RequestOptions<T> = {
 export class GatewayClient {
   public constructor(private readonly gatewayUrl: string) {}
 
-  public health(): Promise<HealthResponse> {
-    return this.request('/v1/health', { schema: healthResponseSchema });
+  public health(apiKey?: string): Promise<HealthResponse> {
+    return this.request('/v1/health', { apiKey, schema: healthResponseSchema });
   }
 
-  public pair(code: string, deviceName: string, apiKey?: string): Promise<PairingExchangeResponse> {
-    return this.request('/v1/pairing/exchange', {
-      method: 'POST',
-      body: { code, deviceName },
-      apiKey,
-      schema: pairingExchangeResponseSchema,
-    });
+  public connect(apiKey: string): Promise<HealthResponse> {
+    return this.health(apiKey);
   }
 
-  public async projects(token: string): Promise<ProjectSummary[]> {
-    const response = await this.request('/v1/projects', { token, schema: projectsResponseSchema });
+  public async projects(apiKey: string): Promise<ProjectSummary[]> {
+    const response = await this.request('/v1/projects', { apiKey, schema: projectsResponseSchema });
     return response.projects;
   }
 
-  public createProject(token: string, input: CreateProjectRequest): Promise<CreateProjectResponse> {
+  public createProject(apiKey: string, input: CreateProjectRequest): Promise<CreateProjectResponse> {
     return this.request('/v1/projects', {
       method: 'POST',
-      token,
+      apiKey,
       body: input,
       schema: createProjectResponseSchema,
     });
   }
 
-  public async sessions(token: string): Promise<SessionSummary[]> {
-    const response = await this.request('/v1/sessions', { token, schema: sessionsResponseSchema });
+  public async sessions(apiKey: string): Promise<SessionSummary[]> {
+    const response = await this.request('/v1/sessions', { apiKey, schema: sessionsResponseSchema });
     return response.sessions;
   }
 
-  public async session(token: string, sessionId: string): Promise<SessionDetail> {
+  public async session(apiKey: string, sessionId: string): Promise<SessionDetail> {
     const response = await this.request(`/v1/sessions/${encodeURIComponent(sessionId)}`, {
-      token,
+      apiKey,
       schema: sessionDetailResponseSchema,
     });
     return response.session;
   }
 
-  public createSession(token: string, input: CreateSessionRequest): Promise<CreateSessionResponse> {
+  public createSession(apiKey: string, input: CreateSessionRequest): Promise<CreateSessionResponse> {
     return this.request('/v1/sessions', {
       method: 'POST',
-      token,
+      apiKey,
       body: input,
       schema: createSessionResponseSchema,
     });
   }
 
-  public archiveSession(token: string, sessionId: string, requestId: string): Promise<void> {
+  public archiveSession(apiKey: string, sessionId: string, requestId: string): Promise<void> {
     return this.request(`/v1/sessions/${encodeURIComponent(sessionId)}/archive`, {
       method: 'POST',
-      token,
+      apiKey,
       body: { requestId },
       schema: archiveSessionResponseSchema,
     }).then(() => undefined);
   }
 
   public sendMessage(
-    token: string,
+    apiKey: string,
     sessionId: string,
     message: string,
     requestId: string,
   ): Promise<SendMessageResponse> {
     return this.request(`/v1/sessions/${encodeURIComponent(sessionId)}/messages`, {
       method: 'POST',
-      token,
+      apiKey,
       body: { requestId, message },
       schema: sendMessageResponseSchema,
     });
   }
 
   public cancelSession(
-    token: string,
+    apiKey: string,
     sessionId: string,
     requestId: string,
   ): Promise<SessionSummary> {
     return this.request(`/v1/sessions/${encodeURIComponent(sessionId)}/cancel`, {
       method: 'POST',
-      token,
+      apiKey,
       body: { requestId },
       schema: cancelSessionResponseSchema,
     }).then((response) => response.session);
   }
 
   public decidePermission(
-    token: string,
+    apiKey: string,
     permissionId: string,
     decision: PermissionDecision,
     requestId: string,
   ): Promise<PermissionDecisionResponse> {
     return this.request(`/v1/permissions/${encodeURIComponent(permissionId)}/decision`, {
       method: 'POST',
-      token,
+      apiKey,
       body: { requestId, decision },
       schema: permissionDecisionResponseSchema,
     });
@@ -187,7 +179,6 @@ export class GatewayClient {
         headers: {
           Accept: 'application/json',
           ...(options.body === undefined ? {} : { 'Content-Type': 'application/json' }),
-          ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
           ...(options.apiKey ? { 'X-API-Key': options.apiKey } : {}),
         },
         body: options.body === undefined ? undefined : JSON.stringify(options.body),

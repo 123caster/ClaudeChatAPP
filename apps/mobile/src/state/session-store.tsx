@@ -44,7 +44,7 @@ type SessionState = {
 const SessionContext = createContext<SessionState | null>(null);
 
 export function SessionProvider({ children }: PropsWithChildren) {
-  const { gatewayUrl, token, resetPairing, setTransportOnline } = useConnection();
+  const { gatewayUrl, apiKey, resetConnection, setTransportOnline } = useConnection();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [loading, setLoading] = useState(false);
@@ -55,17 +55,17 @@ export function SessionProvider({ children }: PropsWithChildren) {
   const eventListenersRef = useRef(new Set<(event: EventEnvelope) => void>());
 
   const handleUnauthorized = useCallback(async () => {
-    await resetPairing('设备授权已失效，请在电脑上生成新的配对码。');
-  }, [resetPairing]);
+    await resetConnection('API Key 不正确或已失效，请重新连接。');
+  }, [resetConnection]);
 
   const refresh = useCallback(async () => {
-    if (!gatewayUrl || !token) return;
+    if (!gatewayUrl || !apiKey) return;
     setLoading(true);
     try {
       const client = new GatewayClient(gatewayUrl);
       const [nextSessions, nextProjects] = await Promise.all([
-        client.sessions(token),
-        client.projects(token),
+        client.sessions(apiKey),
+        client.projects(apiKey),
       ]);
       setSessions(sortSessions(nextSessions));
       setProjects(nextProjects);
@@ -81,7 +81,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
     } finally {
       setLoading(false);
     }
-  }, [gatewayUrl, token, handleUnauthorized, setTransportOnline]);
+  }, [gatewayUrl, apiKey, handleUnauthorized, setTransportOnline]);
 
   const handleEvent = useCallback((event: EventEnvelope) => {
     // Deltas are transient and may reuse an event id. Resume only from durable events.
@@ -120,13 +120,13 @@ export function SessionProvider({ children }: PropsWithChildren) {
     eventClientRef.current?.stop();
     eventClientRef.current = null;
     setEventState('idle');
-    if (!gatewayUrl || !token) {
+    if (!gatewayUrl || !apiKey) {
       setSessions([]);
       setProjects([]);
       return;
     }
 
-    const client = new EventClient(gatewayUrl, token, {
+    const client = new EventClient(gatewayUrl, apiKey, {
       onEvent: handleEvent,
       onStateChange: (state) => {
         setEventState(state);
@@ -159,42 +159,42 @@ export function SessionProvider({ children }: PropsWithChildren) {
       network();
       client.stop();
     };
-  }, [gatewayUrl, token, handleEvent, refresh, setTransportOnline]);
+  }, [gatewayUrl, apiKey, handleEvent, refresh, setTransportOnline]);
 
   const create = useCallback(
     async (projectId: string, message: string, requestId = createRequestId()) => {
-      if (!gatewayUrl || !token) throw new Error('Gateway is not connected.');
+      if (!gatewayUrl || !apiKey) throw new Error('Gateway is not connected.');
       const request: CreateSessionRequest = { requestId, projectId, message: message.trim() };
-      const response = await new GatewayClient(gatewayUrl).createSession(token, request);
+      const response = await new GatewayClient(gatewayUrl).createSession(apiKey, request);
       setSessions((current) => mergeSession(current, response.session));
       return response.session.id;
     },
-    [gatewayUrl, token],
+    [gatewayUrl, apiKey],
   );
 
   const archive = useCallback(
     async (sessionId: string) => {
-      if (!gatewayUrl || !token) throw new Error('Gateway is not connected.');
-      await new GatewayClient(gatewayUrl).archiveSession(token, sessionId, createRequestId());
+      if (!gatewayUrl || !apiKey) throw new Error('Gateway is not connected.');
+      await new GatewayClient(gatewayUrl).archiveSession(apiKey, sessionId, createRequestId());
       setSessions((current) => current.filter(({ id }) => id !== sessionId));
     },
-    [gatewayUrl, token],
+    [gatewayUrl, apiKey],
   );
 
   const createProject = useCallback(
     async (displayName: string, parentProjectId: string, folderName: string) => {
-      if (!gatewayUrl || !token) throw new Error('Gateway is not connected.');
+      if (!gatewayUrl || !apiKey) throw new Error('Gateway is not connected.');
       const request: CreateProjectRequest = {
         requestId: createRequestId(),
         displayName: displayName.trim(),
         parentProjectId,
         folderName: folderName.trim(),
       };
-      const response = await new GatewayClient(gatewayUrl).createProject(token, request);
+      const response = await new GatewayClient(gatewayUrl).createProject(apiKey, request);
       setProjects((current) => [...current, response.project]);
       return response.project;
     },
-    [gatewayUrl, token],
+    [gatewayUrl, apiKey],
   );
 
   const value = useMemo(

@@ -73,9 +73,9 @@ export function BasicChatScreen({ sessionId }: { sessionId: string }) {
     void loadCachedSession(sessionId).then((cached) => {
       if (cached && !loadedRef.current) dispatch({ type: 'loaded', detail: cached });
     });
-    if (!client || !connection.token) return unsubscribe;
+    if (!client || !connection.apiKey) return unsubscribe;
     void client
-      .session(connection.token, sessionId)
+      .session(connection.apiKey, sessionId)
       .then((detail) => {
         dispatch({ type: 'loaded', detail });
         loadedRef.current = true;
@@ -84,7 +84,7 @@ export function BasicChatScreen({ sessionId }: { sessionId: string }) {
       })
       .catch(() => setError('无法加载会话详情。'));
     return unsubscribe;
-  }, [client, connection.token, sessionId, sessions.subscribe]);
+  }, [client, connection.apiKey, sessionId, sessions.subscribe]);
 
   useEffect(() => {
     if (!state.detail) return;
@@ -102,12 +102,12 @@ export function BasicChatScreen({ sessionId }: { sessionId: string }) {
 
   const send = async () => {
     const message = draft.trim();
-    if (!client || !connection.token || !message || busy || running) return;
+    if (!client || !connection.apiKey || !message || busy || running) return;
     setBusy(true);
     setError(null);
     try {
       const response = await client.sendMessage(
-        connection.token,
+        connection.apiKey,
         sessionId,
         message,
         createRequestId(),
@@ -123,11 +123,11 @@ export function BasicChatScreen({ sessionId }: { sessionId: string }) {
   };
 
   const cancel = async () => {
-    if (!client || !connection.token || busy || !running) return;
+    if (!client || !connection.apiKey || busy || !running) return;
     setBusy(true);
     setError(null);
     try {
-      const session = await client.cancelSession(connection.token, sessionId, createRequestId());
+      const session = await client.cancelSession(connection.apiKey, sessionId, createRequestId());
       dispatch({ type: 'session', session });
     } catch {
       setError('停止失败，请检查电脑连接。');
@@ -137,12 +137,12 @@ export function BasicChatScreen({ sessionId }: { sessionId: string }) {
   };
 
   const decide = async (permission: PermissionRequest, decision: PermissionDecision) => {
-    if (!client || !connection.token || busy || permission.status !== 'pending') return;
+    if (!client || !connection.apiKey || busy || permission.status !== 'pending') return;
     setBusy(true);
     setError(null);
     try {
       const response = await client.decidePermission(
-        connection.token,
+        connection.apiKey,
         permission.id,
         decision,
         createRequestId(),

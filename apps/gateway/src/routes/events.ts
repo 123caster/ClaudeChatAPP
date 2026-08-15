@@ -3,8 +3,6 @@ import { PROTOCOL_VERSION, eventEnvelopeSchema, type EventEnvelope } from '@clau
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
-import { createAuthenticationHook } from '../auth/authenticate.js';
-import type { DeviceAuthService } from '../auth/device-auth-service.js';
 import type { EventStore } from '../events/event-store.js';
 import type { EventStream } from '../events/event-stream.js';
 import { GATEWAY_VERSION } from '../version.js';
@@ -15,7 +13,6 @@ const eventQuerySchema = z
   .strict();
 
 type EventRouteOptions = {
-  deviceAuth: DeviceAuthService;
   events: EventStore;
   eventStream: EventStream;
   sessions: SessionService;
@@ -29,7 +26,6 @@ export function registerEventRoute(app: FastifyInstance, options: EventRouteOpti
       '/v1/events',
       {
         websocket: true,
-        preValidation: createAuthenticationHook(options.deviceAuth),
       },
       (socket, request) => {
         const query = eventQuerySchema.safeParse(request.query);

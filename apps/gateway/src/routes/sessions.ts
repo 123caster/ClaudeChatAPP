@@ -8,8 +8,6 @@ import {
 } from '@claude-chat/protocol';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
-import { createAuthenticationHook } from '../auth/authenticate.js';
-import type { DeviceAuthService } from '../auth/device-auth-service.js';
 import { sendError } from '../http-error.js';
 import { ProjectPathError } from '../projects/path-policy.js';
 import {
@@ -21,7 +19,6 @@ import {
 import { PermissionNotResolvableError } from '../sessions/permission-service.js';
 
 type SessionRouteOptions = {
-  deviceAuth: DeviceAuthService;
   sessions: SessionService;
 };
 
@@ -50,13 +47,11 @@ function handleDomainError(request: FastifyRequest, reply: FastifyReply, error: 
 
 export function registerSessionRoutes(
   app: FastifyInstance,
-  { deviceAuth, sessions }: SessionRouteOptions,
+  { sessions }: SessionRouteOptions,
 ): void {
-  const preHandler = createAuthenticationHook(deviceAuth);
+  app.get('/v1/sessions', async () => ({ sessions: sessions.list() }));
 
-  app.get('/v1/sessions', { preHandler }, async () => ({ sessions: sessions.list() }));
-
-  app.post('/v1/sessions', { preHandler }, async (request, reply) => {
+  app.post('/v1/sessions', async (request, reply) => {
     const body = createSessionRequestSchema.safeParse(request.body);
     if (!body.success) {
       return sendError(request, reply, 400, 'VALIDATION_ERROR', 'Invalid session request.');
@@ -68,7 +63,7 @@ export function registerSessionRoutes(
     }
   });
 
-  app.get('/v1/sessions/:sessionId', { preHandler }, async (request, reply) => {
+  app.get('/v1/sessions/:sessionId', async (request, reply) => {
     const params = sessionParamsSchema.safeParse(request.params);
     if (!params.success) {
       return sendError(request, reply, 400, 'VALIDATION_ERROR', 'Invalid session ID.');
@@ -80,7 +75,7 @@ export function registerSessionRoutes(
     }
   });
 
-  app.post('/v1/sessions/:sessionId/messages', { preHandler }, async (request, reply) => {
+  app.post('/v1/sessions/:sessionId/messages', async (request, reply) => {
     const params = sessionParamsSchema.safeParse(request.params);
     const body = sendMessageRequestSchema.safeParse(request.body);
     if (!params.success || !body.success) {
@@ -93,7 +88,7 @@ export function registerSessionRoutes(
     }
   });
 
-  app.post('/v1/sessions/:sessionId/cancel', { preHandler }, async (request, reply) => {
+  app.post('/v1/sessions/:sessionId/cancel', async (request, reply) => {
     const params = sessionParamsSchema.safeParse(request.params);
     const body = writeActionRequestSchema.safeParse(request.body);
     if (!params.success || !body.success) {
@@ -109,7 +104,7 @@ export function registerSessionRoutes(
     }
   });
 
-  app.post('/v1/sessions/:sessionId/archive', { preHandler }, async (request, reply) => {
+  app.post('/v1/sessions/:sessionId/archive', async (request, reply) => {
     const params = sessionParamsSchema.safeParse(request.params);
     const body = writeActionRequestSchema.safeParse(request.body);
     if (!params.success || !body.success) {
@@ -125,7 +120,7 @@ export function registerSessionRoutes(
     }
   });
 
-  app.post('/v1/permissions/:permissionId/decision', { preHandler }, async (request, reply) => {
+  app.post('/v1/permissions/:permissionId/decision', async (request, reply) => {
     const params = permissionParamsSchema.safeParse(request.params);
     const body = permissionDecisionRequestSchema.safeParse(request.body);
     if (!params.success || !body.success) {

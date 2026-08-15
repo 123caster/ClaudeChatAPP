@@ -1,5 +1,4 @@
 import { PROTOCOL_VERSION, type HealthResponse } from '@claude-chat/protocol';
-import * as Device from 'expo-device';
 import {
   createContext,
   useCallback,
@@ -10,51 +9,41 @@ import {
   type PropsWithChildren,
 } from 'react';
 
-import {
-  GatewayClient,
-  GatewayRequestError,
-  connectionErrorMessage,
-  normalizeGatewayUrl,
-} from '@/api/gateway-client';
+import { GatewayClient, GatewayRequestError, connectionErrorMessage } from '@/api/gateway-client';
+import { GATEWAY_URL } from '@/config/gateway';
 import { clearEventCursor } from '@/storage/event-cursor';
-import {
-  clearDeviceToken,
-  loadStoredConnection,
-  saveGatewayUrl,
-  savePairedConnection,
-} from '@/storage/device-credentials';
+import { clearApiKey, loadStoredConnection, saveApiKey } from '@/storage/device-credentials';
 
-export type ConnectionPhase = 'hydrating' | 'unpaired' | 'pairing' | 'connected' | 'offline';
+export type ConnectionPhase = 'hydrating' | 'unpaired' | 'connecting' | 'connected' | 'offline';
 
 type ConnectionState = {
   phase: ConnectionPhase;
   gatewayUrl: string;
-  token: string | null;
+  apiKey: string | null;
   health: HealthResponse | null;
   error: string | null;
-  pair: (gatewayUrl: string, code: string, apiKey?: string) => Promise<void>;
+  connect: (apiKey: string) => Promise<void>;
   retry: () => Promise<void>;
-  resetPairing: (message?: string) => Promise<void>;
+  resetConnection: (message?: string) => Promise<void>;
   setTransportOnline: (online: boolean) => void;
 };
 
 const ConnectionContext = createContext<ConnectionState | null>(null);
 
-function defaultDeviceName(): string {
-  return Device.deviceName?.trim() || Device.modelName?.trim() || 'Android phone';
-}
-
 export function ConnectionProvider({ children }: PropsWithChildren) {
   const [phase, setPhase] = useState<ConnectionPhase>('hydrating');
-  const [gatewayUrl, setGatewayUrl] = useState('');
-  const [token, setToken] = useState<string | null>(null);
+  const [gatewayUrl] = useState(GATEWAY_URL);
+  const [apiKey, setApiKey] = useState<string | null>(null);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const validateStoredConnection = useCallback(async (url: string, storedToken: string) => {
+  const validateStoredConnection = useCallback(async (storedApiKey: string) => {
     try {
-      const client = new GatewayClient(url);
-      const [healthResponse] = await Promise.all([client.health(), client.sessions(storedToken)]);
+      const client = new GatewayClient(GATEWAY_URL);
+      const [healthResponse] = await Promise.all([
+        client.connect(storedApiKey),
+        client.sessions(storedApiKey),
+      ]);
       if (healthResponse.protocolVersion !== PROTOCOL_VERSION) {
         throw new GatewayRequestError('PROTOCOL_ERROR', 'Protocol version mismatch.', null);
       }
@@ -63,8 +52,8 @@ export function ConnectionProvider({ children }: PropsWithChildren) {
       setError(null);
     } catch (caught) {
       if (caught instanceof GatewayRequestError && caught.code === 'UNAUTHORIZED') {
-        await Promise.all([clearDeviceToken(), clearEventCursor()]);
-        setToken(null);
+        await Promise.all([clearApiKey(), clearEventCursor()]);
+        setApiKey(null);
         setPhase('unpaired');
       } else {
         setPhase('offline');
@@ -76,14 +65,13 @@ export function ConnectionProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     void loadStoredConnection()
       .then(async (stored) => {
-        const url = stored.gatewayUrl ?? '';
-        setGatewayUrl(url);
-        setToken(stored.token);
-        if (!url || !stored.token) {
+        const key = stored.apiKey ?? '';
+        setApiKey(stored.apiKey);
+        if (!key) {
           setPhase('unpaired');
           return;
         }
-        await validateStoredConnection(url, stored.token);
+        await validateStoredConnection(key);
       })
       .catch(() => {
         setPhase('unpaired');
@@ -91,22 +79,19 @@ export function ConnectionProvider({ children }: PropsWithChildren) {
       });
   }, [validateStoredConnection]);
 
-  const pair = useCallback(async (inputUrl: string, code: string, apiKey?: string) => {
-    const normalized = normalizeGatewayUrl(inputUrl);
-    if (!/^\d{6}$/.test(code)) throw new Error('请输入 6 位配对码');
-    setPhase('pairing');
+  const connect = useCallback(async (key: string) => {
+    const trimmed = key.trim();
+    if (!trimmed) throw new Error('请输入 API Key');
+    setPhase('connecting');
     setError(null);
-    setGatewayUrl(normalized);
-    await saveGatewayUrl(normalized);
     try {
-      const client = new GatewayClient(normalized);
-      const healthResponse = await client.health();
+      const client = new GatewayClient(GATEWAY_URL);
+      const healthResponse = await client.connect(trimmed);
       if (healthResponse.protocolVersion !== PROTOCOL_VERSION) {
         throw new GatewayRequestError('PROTOCOL_ERROR', 'Protocol version mismatch.', null);
       }
-      const paired = await client.pair(code, defaultDeviceName(), apiKey);
-      await savePairedConnection(normalized, paired.token);
-      setToken(paired.token);
+      await saveApiKey(trimmed);
+      setApiKey(trimmed);
       setHealth(healthResponse);
       setPhase('connected');
     } catch (caught) {
@@ -117,17 +102,17 @@ export function ConnectionProvider({ children }: PropsWithChildren) {
   }, []);
 
   const retry = useCallback(async () => {
-    if (!gatewayUrl || !token) {
+    if (!apiKey) {
       setPhase('unpaired');
       return;
     }
     setPhase('hydrating');
-    await validateStoredConnection(gatewayUrl, token);
-  }, [gatewayUrl, token, validateStoredConnection]);
+    await validateStoredConnection(apiKey);
+  }, [apiKey, validateStoredConnection]);
 
-  const resetPairing = useCallback(async (message?: string) => {
-    await Promise.all([clearDeviceToken(), clearEventCursor()]);
-    setToken(null);
+  const resetConnection = useCallback(async (message?: string) => {
+    await Promise.all([clearApiKey(), clearEventCursor()]);
+    setApiKey(null);
     setHealth(null);
     setPhase('unpaired');
     setError(message ?? null);
@@ -135,25 +120,25 @@ export function ConnectionProvider({ children }: PropsWithChildren) {
 
   const setTransportOnline = useCallback(
     (online: boolean) => {
-      if (!token) return;
+      if (!apiKey) return;
       setPhase(online ? 'connected' : 'offline');
     },
-    [token],
+    [apiKey],
   );
 
   const value = useMemo(
     () => ({
       phase,
       gatewayUrl,
-      token,
+      apiKey,
       health,
       error,
-      pair,
+      connect,
       retry,
-      resetPairing,
+      resetConnection,
       setTransportOnline,
     }),
-    [phase, gatewayUrl, token, health, error, pair, retry, resetPairing, setTransportOnline],
+    [phase, gatewayUrl, apiKey, health, error, connect, retry, resetConnection, setTransportOnline],
   );
 
   return <ConnectionContext.Provider value={value}>{children}</ConnectionContext.Provider>;

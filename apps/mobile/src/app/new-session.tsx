@@ -5,6 +5,6 @@ import { useConnection } from '@/state/connection-store';
 
 export default function NewSessionRoute() {
   const connection = useConnection();
-  if (!connection.token) return <Redirect href="/" />;
+  if (!connection.apiKey) return <Redirect href="/" />;
   return <NewSessionScreen />;
 }

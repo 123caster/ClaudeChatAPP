@@ -9,16 +9,16 @@ class FakeWebSocket {
 }
 
 describe('EventClient', () => {
-  it('keeps the token out of the URL and passes it to the native socket factory', () => {
+  it('keeps the api key out of the URL and passes it to the native socket factory', () => {
     const socket = new FakeWebSocket();
-    const factory = jest.fn((url: string, token: string) => {
+    const factory = jest.fn((url: string, apiKey: string) => {
       void url;
-      void token;
+      void apiKey;
       return socket as unknown as WebSocket;
     });
     const client = new EventClient(
       'http://192.168.1.20:4310',
-      'secret-token-value-that-is-long-enough',
+      'secret-api-key-value',
       { onEvent: jest.fn(), onStateChange: jest.fn() },
       factory,
     );
@@ -27,25 +27,25 @@ describe('EventClient', () => {
 
     expect(factory).toHaveBeenCalledWith(
       'ws://192.168.1.20:4310/v1/events?after=42',
-      'secret-token-value-that-is-long-enough',
+      'secret-api-key-value',
     );
-    expect(factory.mock.calls[0]?.[0]).not.toContain('secret-token');
+    expect(factory.mock.calls[0]?.[0]).not.toContain('secret-api-key');
     client.stop();
   });
 
   it('parses protocol events and advances the reconnect cursor', () => {
     const sockets: FakeWebSocket[] = [];
     const events = jest.fn();
-    const factory = jest.fn((_url: string, _token: string) => {
+    const factory = jest.fn((_url: string, _apiKey: string) => {
       void _url;
-      void _token;
+      void _apiKey;
       const socket = new FakeWebSocket();
       sockets.push(socket);
       return socket as unknown as WebSocket;
     });
     const client = new EventClient(
       'http://192.168.1.20:4310',
-      'secret-token-value-that-is-long-enough',
+      'secret-api-key-value',
       { onEvent: events, onStateChange: jest.fn() },
       factory,
     );
@@ -72,7 +72,7 @@ describe('EventClient', () => {
     const socket = new FakeWebSocket();
     const client = new EventClient(
       'http://192.168.1.20:4310',
-      'secret-token-value-that-is-long-enough',
+      'secret-api-key-value',
       { onEvent: jest.fn(), onStateChange: jest.fn() },
       () => socket as unknown as WebSocket,
     );
@@ -84,16 +84,16 @@ describe('EventClient', () => {
 
   it('does not advance the reconnect cursor for transient deltas', () => {
     const sockets: FakeWebSocket[] = [];
-    const factory = jest.fn((_url: string, _token: string) => {
+    const factory = jest.fn((_url: string, _apiKey: string) => {
       void _url;
-      void _token;
+      void _apiKey;
       const socket = new FakeWebSocket();
       sockets.push(socket);
       return socket as unknown as WebSocket;
     });
     const client = new EventClient(
       'http://192.168.1.20:4310',
-      'secret-token-value-that-is-long-enough',
+      'secret-api-key-value',
       { onEvent: jest.fn(), onStateChange: jest.fn() },
       factory,
     );

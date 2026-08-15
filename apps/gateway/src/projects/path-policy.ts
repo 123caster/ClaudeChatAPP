@@ -20,22 +20,25 @@ export class ProjectPathError extends Error {
   }
 }
 
-const windowsPath = path.win32;
+const pathImplementation = process.platform === 'win32' ? path.win32 : path.posix;
 
 function parseRegularDrivePath(input: string): string {
   if (input.length === 0 || input.includes('\0')) {
     throw new ProjectPathError('INVALID_PATH', 'Project path is empty or contains a null byte.');
   }
 
-  const normalizedSeparators = input.replaceAll('/', '\\');
-  if (!/^[A-Za-z]:\\/.test(normalizedSeparators)) {
+  const isWindowsStyle = /^[A-Za-z]:\\/.test(input.replaceAll('/', '\\'));
+  const isPosixStyle = input.startsWith('/');
+
+  if (!isWindowsStyle && !isPosixStyle) {
     throw new ProjectPathError(
       'UNSUPPORTED_PATH_FORM',
-      'Only absolute Windows drive paths such as D:\\Projects\\app are supported.',
+      'Only absolute paths are supported (e.g. D:\\Projects\\app on Windows or /srv/app on Unix).',
     );
   }
 
-  return windowsPath.resolve(normalizedSeparators);
+  const normalized = isWindowsStyle ? input.replaceAll('/', '\\') : input;
+  return pathImplementation.resolve(normalized);
 }
 
 function resolveExistingDirectory(input: string): string {
@@ -54,12 +57,12 @@ function resolveExistingDirectory(input: string): string {
 }
 
 export function isPathContained(rootRealPath: string, candidateRealPath: string): boolean {
-  const relative = windowsPath.relative(rootRealPath, candidateRealPath);
+  const relative = pathImplementation.relative(rootRealPath, candidateRealPath);
   return (
     relative === '' ||
     (relative !== '..' &&
-      !relative.startsWith(`..${windowsPath.sep}`) &&
-      !windowsPath.isAbsolute(relative))
+      !relative.startsWith(`..${pathImplementation.sep}`) &&
+      !pathImplementation.isAbsolute(relative))
   );
 }
 
@@ -117,7 +120,7 @@ export function sanitizeChildName(childName: string): string {
 
 export function resolveChildPath(allowedRootRealPath: string, childName: string): string {
   const safeName = sanitizeChildName(childName);
-  const candidate = windowsPath.resolve(windowsPath.join(allowedRootRealPath, safeName));
+  const candidate = pathImplementation.resolve(pathImplementation.join(allowedRootRealPath, safeName));
   if (candidate === allowedRootRealPath || !isPathContained(allowedRootRealPath, candidate)) {
     throw new ProjectPathError(
       'PATH_OUTSIDE_ALLOWED_ROOTS',
