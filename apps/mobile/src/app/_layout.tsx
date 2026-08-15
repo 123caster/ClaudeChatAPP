@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import { ConnectionProvider } from '@/state/connection-store';
+import { ModelProvider } from '@/state/model-store';
 import { SessionProvider } from '@/state/session-store';
 
 export default function RootLayout() {
@@ -12,7 +13,9 @@ export default function RootLayout() {
         <StatusBar style="dark" />
         <ConnectionProvider>
           <SessionProvider>
-            <Stack screenOptions={{ headerShown: false }} />
+            <ModelProvider>
+              <Stack screenOptions={{ headerShown: false }} />
+            </ModelProvider>
           </SessionProvider>
         </ConnectionProvider>
       </SafeAreaView>

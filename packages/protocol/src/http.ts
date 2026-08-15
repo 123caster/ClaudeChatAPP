@@ -4,6 +4,7 @@ import { protocolVersionSchema } from './envelope.js';
 import {
   entityIdSchema,
   messageSchema,
+  modelSummarySchema,
   permissionDecisionSchema,
   permissionRequestSchema,
   requestIdSchema,
@@ -101,6 +102,54 @@ export const createProjectResponseSchema = z
   })
   .strict();
 
+export const modelsResponseSchema = z
+  .object({
+    models: z.array(modelSummarySchema),
+  })
+  .strict();
+
+export const createModelRequestSchema = z
+  .object({
+    requestId: requestIdSchema,
+    name: z.string().trim().min(1).max(80),
+    baseUrl: z.string().url(),
+    apiKey: z.string().trim().min(1).max(256),
+    model: z.string().trim().min(1).max(200),
+  })
+  .strict();
+
+export const createModelResponseSchema = z
+  .object({
+    requestId: requestIdSchema,
+    model: modelSummarySchema,
+  })
+  .strict();
+
+export const setActiveModelRequestSchema = z
+  .object({
+    requestId: requestIdSchema,
+  })
+  .strict();
+
+export const setActiveModelResponseSchema = z
+  .object({
+    requestId: requestIdSchema,
+    model: modelSummarySchema,
+  })
+  .strict();
+
+export const deleteModelRequestSchema = z
+  .object({
+    requestId: requestIdSchema,
+  })
+  .strict();
+
+export const deleteModelResponseSchema = z
+  .object({
+    requestId: requestIdSchema,
+  })
+  .strict();
+
 export const sessionsResponseSchema = z
   .object({
     sessions: z.array(sessionSummarySchema),
@@ -195,6 +244,12 @@ export const permissionParamsSchema = z
   })
   .strict();
 
+export const modelParamsSchema = z
+  .object({
+    modelId: entityIdSchema,
+  })
+  .strict();
+
 export type ClaudeHealthStatus = z.infer<typeof claudeHealthStatusSchema>;
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
 export type PairingExchangeRequest = z.infer<typeof pairingExchangeRequestSchema>;
@@ -204,6 +259,13 @@ export type ProjectSummary = z.infer<typeof projectSummarySchema>;
 export type ProjectsResponse = z.infer<typeof projectsResponseSchema>;
 export type CreateProjectRequest = z.infer<typeof createProjectRequestSchema>;
 export type CreateProjectResponse = z.infer<typeof createProjectResponseSchema>;
+export type ModelsResponse = z.infer<typeof modelsResponseSchema>;
+export type CreateModelRequest = z.infer<typeof createModelRequestSchema>;
+export type CreateModelResponse = z.infer<typeof createModelResponseSchema>;
+export type SetActiveModelRequest = z.infer<typeof setActiveModelRequestSchema>;
+export type SetActiveModelResponse = z.infer<typeof setActiveModelResponseSchema>;
+export type DeleteModelRequest = z.infer<typeof deleteModelRequestSchema>;
+export type DeleteModelResponse = z.infer<typeof deleteModelResponseSchema>;
 export type SessionsResponse = z.infer<typeof sessionsResponseSchema>;
 export type SessionDetailResponse = z.infer<typeof sessionDetailResponseSchema>;
 export type CreateSessionRequest = z.infer<typeof createSessionRequestSchema>;
@@ -219,3 +281,4 @@ export type PermissionDecisionRequest = z.infer<typeof permissionDecisionRequest
 export type PermissionDecisionResponse = z.infer<typeof permissionDecisionResponseSchema>;
 export type SessionParams = z.infer<typeof sessionParamsSchema>;
 export type PermissionParams = z.infer<typeof permissionParamsSchema>;
+export type ModelParams = z.infer<typeof modelParamsSchema>;

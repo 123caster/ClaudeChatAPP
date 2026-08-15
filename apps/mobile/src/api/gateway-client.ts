@@ -1,26 +1,35 @@
 import {
   archiveSessionResponseSchema,
   cancelSessionResponseSchema,
+  createModelResponseSchema,
   createProjectResponseSchema,
   createSessionResponseSchema,
+  deleteModelResponseSchema,
   errorResponseSchema,
   healthResponseSchema,
+  modelsResponseSchema,
   permissionDecisionResponseSchema,
   projectsResponseSchema,
   sessionDetailResponseSchema,
   sessionsResponseSchema,
   sendMessageResponseSchema,
+  setActiveModelResponseSchema,
+  type CreateModelRequest,
+  type CreateModelResponse,
   type CreateProjectRequest,
   type CreateProjectResponse,
   type CreateSessionRequest,
   type CreateSessionResponse,
+  type DeleteModelResponse,
   type HealthResponse,
+  type ModelSummary,
   type PermissionDecision,
   type PermissionDecisionResponse,
   type ProjectSummary,
   type SessionDetail,
   type SessionSummary,
   type SendMessageResponse,
+  type SetActiveModelResponse,
 } from '@claude-chat/protocol';
 
 type Parser<T> = {
@@ -95,6 +104,42 @@ export class GatewayClient {
       apiKey,
       body: input,
       schema: createProjectResponseSchema,
+    });
+  }
+
+  public async models(apiKey: string): Promise<ModelSummary[]> {
+    const response = await this.request('/v1/models', { apiKey, schema: modelsResponseSchema });
+    return response.models;
+  }
+
+  public createModel(apiKey: string, input: CreateModelRequest): Promise<CreateModelResponse> {
+    return this.request('/v1/models', {
+      method: 'POST',
+      apiKey,
+      body: input,
+      schema: createModelResponseSchema,
+    });
+  }
+
+  public setActiveModel(
+    apiKey: string,
+    modelId: string,
+    requestId: string,
+  ): Promise<SetActiveModelResponse> {
+    return this.request(`/v1/models/${encodeURIComponent(modelId)}/active`, {
+      method: 'POST',
+      apiKey,
+      body: { requestId },
+      schema: setActiveModelResponseSchema,
+    });
+  }
+
+  public deleteModel(apiKey: string, modelId: string, requestId: string): Promise<DeleteModelResponse> {
+    return this.request(`/v1/models/${encodeURIComponent(modelId)}/delete`, {
+      method: 'POST',
+      apiKey,
+      body: { requestId },
+      schema: deleteModelResponseSchema,
     });
   }
 

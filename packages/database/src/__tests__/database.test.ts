@@ -25,6 +25,7 @@ describe('database', () => {
       'devices',
       'events',
       'messages',
+      'models',
       'permission_requests',
       'projects',
       'schema_migrations',
@@ -33,7 +34,7 @@ describe('database', () => {
       'write_requests',
     ]);
     expect(database.prepare('SELECT COUNT(*) AS count FROM schema_migrations').get()).toMatchObject(
-      { count: 6 },
+      { count: 7 },
     );
 
     database.close();

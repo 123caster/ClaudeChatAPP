@@ -1,8 +1,22 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 
 import { z } from 'zod';
+
+// Load a detachable per-environment .env file (if present) so vendor creds and
+// model choice follow the machine the gateway runs on. Anthropic-compatible
+// providers (DeepSeek, Kimi, GLM, Qwen, etc.) are switched by editing the
+// ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN / ANTHROPIC_MODEL triple.
+function loadEnvironmentFile(): void {
+  const envPath = process.env.GATEWAY_ENV_FILE
+    ? resolve(process.env.GATEWAY_ENV_FILE)
+    : resolve(process.cwd(), '.env');
+  if (existsSync(envPath)) {
+    process.loadEnvFile(envPath);
+  }
+}
+loadEnvironmentFile();
 
 const projectConfigSchema = z
   .object({
@@ -78,7 +92,11 @@ export function loadGatewayConfig(
       ...(process.env.CLAUDE_CODE_EXECUTABLE
         ? { executablePath: resolve(process.env.CLAUDE_CODE_EXECUTABLE) }
         : {}),
-      ...(process.env.CLAUDE_MODEL ? { model: process.env.CLAUDE_MODEL } : {}),
+      // Model can be swapped per-environment via CLAUDE_MODEL or ANTHROPIC_MODEL.
+      // ANTHROPIC_MODEL is the canonical vendor-agnostic name used by the Agent SDK.
+      ...(process.env.CLAUDE_MODEL || process.env.ANTHROPIC_MODEL
+        ? { model: process.env.CLAUDE_MODEL ?? process.env.ANTHROPIC_MODEL }
+        : {}),
     },
     databasePath: process.env.GATEWAY_DATABASE_PATH
       ? resolve(process.env.GATEWAY_DATABASE_PATH)

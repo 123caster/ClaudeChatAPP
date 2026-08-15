@@ -22,6 +22,7 @@ import type {
 
 import type { ClaudeAdapter } from '../claude/claude-adapter.js';
 import type { EventStore } from '../events/event-store.js';
+import type { ModelService } from '../models/model-service.js';
 import type { ProjectRegistry } from '../projects/project-registry.js';
 import { assertSessionTransition } from './session-state-machine.js';
 import { PermissionService } from './permission-service.js';
@@ -49,6 +50,7 @@ export class SessionService {
     private readonly adapter: ClaudeAdapter,
     private readonly events: EventStore,
     private readonly now: () => Date = () => new Date(),
+    private readonly models?: ModelService,
   ) {
     this.permissions = new PermissionService(database.permissions, events, now);
   }
@@ -371,12 +373,14 @@ export class SessionService {
     let terminalEventSeen = false;
     try {
       const session = this.requireSession(sessionId);
+      const activeModel = this.models?.getActive() ?? null;
       for await (const event of this.adapter.runTurn({
         localSessionId: sessionId,
         claudeSessionId: session.claudeSessionId,
         prompt,
         cwd,
         signal: controller.signal,
+        ...(activeModel ? { modelConfig: activeModel } : {}),
         requestPermission: async (permissionRequest) => {
           const waiting = this.database.sessions.updateStatus(
             sessionId,

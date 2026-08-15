@@ -92,6 +92,7 @@ export class AgentSdkClaudeAdapter implements ClaudeAdapter {
     };
 
     try {
+      const modelConfig = request.modelConfig;
       const options: Options = {
         abortController,
         canUseTool,
@@ -100,11 +101,26 @@ export class AgentSdkClaudeAdapter implements ClaudeAdapter {
         permissionMode: 'default',
         settingSources: [],
         tools: { type: 'preset', preset: 'claude_code' },
+        // Pass the gateway process environment through to the Claude Code child
+        // process explicitly. Anthropic-compatible vendor creds are injected here
+        // (ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN, ANTHROPIC_MODEL), so swapping
+        // models/providers is just changing those vars in the running environment.
+        env: modelConfig
+          ? {
+              ...process.env,
+              ANTHROPIC_BASE_URL: modelConfig.baseUrl,
+              ANTHROPIC_AUTH_TOKEN: modelConfig.apiKey,
+            }
+          : { ...process.env },
         ...(request.claudeSessionId ? { resume: request.claudeSessionId } : {}),
         ...(this.options.executablePath
           ? { pathToClaudeCodeExecutable: resolveClaudeExecutablePath(this.options.executablePath) }
           : {}),
-        ...(this.options.model ? { model: this.options.model } : {}),
+        ...(modelConfig
+          ? { model: modelConfig.model }
+          : this.options.model
+            ? { model: this.options.model }
+            : {}),
       };
       for await (const message of this.runQuery({ prompt: request.prompt, options })) {
         if (request.signal.aborted) return;

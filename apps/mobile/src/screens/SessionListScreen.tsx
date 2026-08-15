@@ -35,7 +35,14 @@ export function SessionListScreen() {
   return (
     <View style={styles.page}>
       <View style={styles.header}>
-        <View style={styles.headerSide} />
+        <Pressable
+          accessibilityLabel="模型管理"
+          accessibilityRole="button"
+          onPress={() => router.push('/models')}
+          style={({ pressed }) => [styles.modelButton, pressed && styles.iconPressed]}
+        >
+          <Text style={styles.modelButtonText}>模型</Text>
+        </Pressable>
         <View style={styles.titleWrap}>
           <Text accessibilityRole="header" style={styles.title}>
             Claude
@@ -114,6 +121,13 @@ const styles = StyleSheet.create({
     height: 52,
   },
   headerSide: { height: 48, width: 48 },
+  modelButton: {
+    alignItems: 'center',
+    height: 48,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.control,
+  },
+  modelButtonText: { color: colors.brand, fontSize: 14, fontWeight: '600' },
   titleWrap: { alignItems: 'center', flex: 1 },
   title: { color: colors.text, fontSize: 17, fontWeight: '600' },
   connectionText: { color: colors.muted, fontSize: 10, marginTop: 1 },

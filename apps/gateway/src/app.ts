@@ -3,17 +3,20 @@ import type { HealthResponse } from '@claude-chat/protocol';
 
 import { registerApiKeyHook } from './auth/api-key.js';
 import type { ProjectRegistry } from './projects/project-registry.js';
+import type { ModelService } from './models/model-service.js';
 import type { EventStore } from './events/event-store.js';
 import type { EventStream } from './events/event-stream.js';
 import { registerHealthRoute } from './routes/health.js';
 import { registerEventRoute } from './routes/events.js';
 import { registerProjectRoutes } from './routes/projects.js';
 import { registerSessionRoutes } from './routes/sessions.js';
+import { registerModelRoutes } from './routes/models.js';
 import type { SessionService } from './sessions/session-service.js';
 import { GATEWAY_VERSION } from './version.js';
 
 export type GatewayServices = {
   projects: ProjectRegistry;
+  models?: ModelService;
   events?: EventStore;
   eventStream?: EventStream;
   sessions?: SessionService;
@@ -40,6 +43,9 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
 
   if (options.services) {
     registerProjectRoutes(app, options.services);
+    if (options.services.models) {
+      registerModelRoutes(app, { models: options.services.models });
+    }
     if (options.services.sessions) {
       registerSessionRoutes(app, { sessions: options.services.sessions });
     }

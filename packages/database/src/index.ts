@@ -10,6 +10,7 @@ export {
   type IdempotencyResult,
 } from './repositories/idempotency-repository.js';
 export type { MessageRecord, MessageRepository } from './repositories/message-repository.js';
+export type { ModelRecord, ModelRepository } from './repositories/model-repository.js';
 export {
   permissionDecisions,
   type PermissionDecision,

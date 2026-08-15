@@ -23,3 +23,7 @@ apps/mobile/ios/Pods/
 
 # Local gateway runtime config (contains machine-specific paths).
 apps/gateway/config.json
+
+# IDE and local build environment helpers.
+.idea/
+android-env.ps1

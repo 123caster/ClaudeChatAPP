@@ -10,12 +10,14 @@ import { EventStore } from './events/event-store.js';
 import { EventStream } from './events/event-stream.js';
 import { gatewayUrls } from './network-addresses.js';
 import { ProjectRegistry } from './projects/project-registry.js';
+import { ModelService } from './models/model-service.js';
 import { SessionService } from './sessions/session-service.js';
 
 const config = loadGatewayConfig();
 const database = createDatabase(config.databasePath);
 const projects = new ProjectRegistry(database.projects);
 projects.synchronize(config.projects);
+const models = new ModelService(database.models);
 
 const eventStream = new EventStream();
 const events = new EventStore(database.events, eventStream);
@@ -30,7 +32,7 @@ const claudeHealth = new ClaudeHealthMonitor(
   config.claude.executablePath ?? (process.platform === 'win32' ? 'claude.cmd' : 'claude'),
 );
 void claudeHealth.refresh();
-const sessions = new SessionService(database, projects, adapter, events);
+const sessions = new SessionService(database, projects, adapter, events, undefined, models);
 const recovery = sessions.recoverOnStartup();
 
 const app = buildApp({
@@ -40,7 +42,7 @@ const app = buildApp({
     config.claude.adapter === 'fake'
       ? { status: 'ready', message: 'Fake Claude adapter is active.' }
       : claudeHealth.snapshot(),
-  services: { projects, events, eventStream, sessions },
+  services: { projects, models, events, eventStream, sessions },
 });
 app.addHook('onClose', async () => {
   closeDatabase(database);

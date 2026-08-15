@@ -152,6 +152,17 @@ export const sessionDetailSchema = sessionSummarySchema
   })
   .strict();
 
+export const modelSummarySchema = z
+  .object({
+    id: entityIdSchema,
+    name: z.string().trim().min(1).max(80),
+    baseUrl: z.string().url(),
+    model: z.string().trim().min(1).max(200),
+    isActive: z.boolean(),
+    createdAt: timestampSchema,
+  })
+  .strict();
+
 export type SessionStatus = z.infer<typeof sessionStatusSchema>;
 export type MessageRole = z.infer<typeof messageRoleSchema>;
 export type ToolCallStatus = z.infer<typeof toolCallStatusSchema>;
@@ -162,3 +173,4 @@ export type Message = z.infer<typeof messageSchema>;
 export type ToolCall = z.infer<typeof toolCallSchema>;
 export type PermissionRequest = z.infer<typeof permissionRequestSchema>;
 export type SessionDetail = z.infer<typeof sessionDetailSchema>;
+export type ModelSummary = z.infer<typeof modelSummarySchema>;

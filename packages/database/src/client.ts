@@ -11,6 +11,10 @@ import {
   type MessageRepository,
 } from './repositories/message-repository.js';
 import {
+  createModelRepository,
+  type ModelRepository,
+} from './repositories/model-repository.js';
+import {
   createPermissionRepository,
   type PermissionRepository,
 } from './repositories/permission-repository.js';
@@ -33,6 +37,7 @@ export interface DatabaseClient {
   readonly idempotency: IdempotencyRepository;
   readonly isOpen: boolean;
   readonly messages: MessageRepository;
+  readonly models: ModelRepository;
   readonly permissions: PermissionRepository;
   readonly projects: ProjectRepository;
   readonly sessions: SessionRepository;
@@ -47,6 +52,7 @@ class NodeSqliteDatabaseClient implements DatabaseClient {
   public readonly events: EventRepository;
   public readonly idempotency: IdempotencyRepository;
   public readonly messages: MessageRepository;
+  public readonly models: ModelRepository;
   public readonly permissions: PermissionRepository;
   public readonly projects: ProjectRepository;
   public readonly sessions: SessionRepository;
@@ -58,6 +64,7 @@ class NodeSqliteDatabaseClient implements DatabaseClient {
     this.events = createEventRepository(database);
     this.idempotency = createIdempotencyRepository(database);
     this.messages = createMessageRepository(database);
+    this.models = createModelRepository(database);
     this.permissions = createPermissionRepository(database);
     this.projects = createProjectRepository(database);
     this.sessions = createSessionRepository(database);

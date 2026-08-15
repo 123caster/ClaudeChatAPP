@@ -25,6 +25,11 @@ export type ClaudeTurnRequest = {
   prompt: string;
   cwd: string;
   signal: AbortSignal;
+  modelConfig?: {
+    baseUrl: string;
+    apiKey: string;
+    model: string;
+  };
   requestPermission(request: ClaudePermissionRequest): Promise<ClaudePermissionDecision>;
 };
 
