@@ -15,6 +15,7 @@ coverage/
 .codex-staging/
 first_loves/
 claudechatapp-bootstrap-staging/
+.superpowers/
 
 # Native build output.
 apps/mobile/android/.gradle/
