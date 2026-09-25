@@ -44,3 +44,17 @@ pnpm --filter @claude-chat/gateway start
 ```
 
 `GET /v1/health` reports whether Claude Code is ready, signed out, or unavailable. Unit tests keep the fake adapter; real account and network smoke checks are explicit scripts rather than part of the normal test suite.
+
+## Mobile Gateway Configuration
+
+The mobile source does not contain a deployment address. Copy the example to a local,
+ignored file before starting or building the app:
+
+```powershell
+Copy-Item apps/mobile/.env.example apps/mobile/.env.local
+```
+
+Set `EXPO_PUBLIC_GATEWAY_URL` in `.env.local` to an HTTPS Gateway root URL. The app
+shows a configuration error and does not send requests when the value is missing or
+invalid. Expo embeds `EXPO_PUBLIC_*` values in the application bundle, so this variable
+must contain only the server address; never put API keys, tokens, or passwords in it.

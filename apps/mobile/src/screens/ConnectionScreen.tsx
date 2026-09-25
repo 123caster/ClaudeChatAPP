@@ -21,6 +21,7 @@ export function ConnectionScreen() {
   const [pairingCode, setPairingCode] = useState('');
   const [fieldError, setFieldError] = useState<string | null>(null);
   const busy = connection.phase === 'connecting';
+  const configured = Boolean(GATEWAY_URL);
 
   const submit = async () => {
     setFieldError(null);
@@ -45,11 +46,11 @@ export function ConnectionScreen() {
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={styles.label}>服务器地址</Text>
         <Text selectable style={styles.address}>
-          {GATEWAY_URL}
+          {GATEWAY_URL || '未配置（设置 EXPO_PUBLIC_GATEWAY_URL 后重新构建）'}
         </Text>
         <Text style={styles.label}>一次性配对码</Text>
         <TextInput
-          editable={!busy}
+          editable={!busy && configured}
           inputMode="numeric"
           maxLength={6}
           onChangeText={(value) => setPairingCode(value.replace(/\D/g, ''))}
@@ -66,11 +67,11 @@ export function ConnectionScreen() {
         ) : null}
         <Pressable
           accessibilityRole="button"
-          disabled={busy || pairingCode.length !== 6}
+          disabled={busy || !configured || pairingCode.length !== 6}
           onPress={() => void submit()}
           style={({ pressed }) => [
             styles.button,
-            (busy || pairingCode.length !== 6) && styles.buttonDisabled,
+            (busy || !configured || pairingCode.length !== 6) && styles.buttonDisabled,
             pressed && styles.buttonPressed,
           ]}
         >

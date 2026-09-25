@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+public_host=${CLAUDECHAT_PUBLIC_HOST:-}
+if [[ -z "$public_host" || ! "$public_host" =~ ^[A-Za-z0-9.-]+$ ]]; then
+  /usr/bin/logger -p daemon.err -t claudechat-certificate \
+    "CLAUDECHAT_PUBLIC_HOST is missing or invalid."
+  exit 2
+fi
+
 /usr/bin/install -d -m 0755 /var/lib/claudechat-gateway/tls
-/usr/bin/install -m 0644 /etc/letsencrypt/live/gateway.example.com/fullchain.pem \
+/usr/bin/install -m 0644 "/etc/letsencrypt/live/$public_host/fullchain.pem" \
   /var/lib/claudechat-gateway/tls/fullchain.pem
 /usr/sbin/nginx -t
 /usr/bin/systemctl reload nginx.service

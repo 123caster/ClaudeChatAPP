@@ -27,7 +27,7 @@ Android App 只连接 `https://gateway.example.com` 和 `wss://gateway.example.c
 
 ## 公网 IP 证书
 
-使用 Certbot 5.4 或更高版本，通过 Webroot HTTP-01 流程为 `gateway.example.com` 申请 Let's Encrypt `shortlived` 公网 IP 证书。服务器 Ubuntu 软件源候选版本过旧，因此必须使用官方 Snap 等受支持的新版发行方式。正式申请前必须先通过 Let's Encrypt Staging 环境验证，正式证书只能申请一次。
+使用 Certbot 5.4 或更高版本，通过 Webroot HTTP-01 流程为 `gateway.example.com` 申请 Let's Encrypt `shortlived` 证书。服务器 Ubuntu 软件源候选版本过旧，因此必须使用官方 Snap 等受支持的新版发行方式。正式申请前必须先通过 Let's Encrypt Staging 环境验证，正式证书只能申请一次。
 
 systemd Timer 每 12 小时执行一次 `certbot renew --quiet`，加入随机延迟并设置 `Persistent=true`。只有续期成功后才运行 Deploy Hook；Hook 先执行 `nginx -t`，仅在配置验证成功时平滑重载 Nginx。
 

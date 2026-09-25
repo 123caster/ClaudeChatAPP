@@ -2,9 +2,13 @@
 set -euo pipefail
 
 mode=${1:-}
-ip_address=gateway.example.com
+public_host=${CLAUDECHAT_PUBLIC_HOST:-}
 webroot=/var/www/claudechat-acme
 
+if [[ -z "$public_host" || ! "$public_host" =~ ^[A-Za-z0-9.-]+$ ]]; then
+  echo "Set CLAUDECHAT_PUBLIC_HOST to a valid public hostname or IPv4 address." >&2
+  exit 2
+fi
 if [[ "$mode" != "staging" && "$mode" != "production" ]]; then
   echo "Usage: $0 staging|production" >&2
   exit 2
@@ -28,13 +32,18 @@ arguments=(
   --preferred-profile shortlived
   --webroot
   --webroot-path "$webroot"
-  --ip-address "$ip_address"
 )
 
-if [[ "$mode" == "staging" ]]; then
-  arguments+=(--staging --cert-name "${ip_address}-staging")
+if [[ "$public_host" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+  arguments+=(--ip-address "$public_host")
 else
-  arguments+=(--cert-name "$ip_address")
+  arguments+=(--domains "$public_host")
+fi
+
+if [[ "$mode" == "staging" ]]; then
+  arguments+=(--staging --cert-name "${public_host}-staging")
+else
+  arguments+=(--cert-name "$public_host")
 fi
 
 /snap/bin/certbot "${arguments[@]}"

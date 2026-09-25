@@ -10,7 +10,7 @@ import {
 } from 'react';
 
 import { GatewayClient, GatewayRequestError, connectionErrorMessage } from '@/api/gateway-client';
-import { GATEWAY_URL } from '@/config/gateway';
+import { GATEWAY_CONFIGURATION_ERROR, GATEWAY_URL } from '@/config/gateway';
 import { clearEventCursor } from '@/storage/event-cursor';
 import {
   clearDeviceToken,
@@ -42,6 +42,11 @@ export function ConnectionProvider({ children }: PropsWithChildren) {
   const [error, setError] = useState<string | null>(null);
 
   const validateStoredConnection = useCallback(async (storedDeviceToken: string) => {
+    if (!GATEWAY_URL) {
+      setPhase('offline');
+      setError(GATEWAY_CONFIGURATION_ERROR);
+      return;
+    }
     try {
       const client = new GatewayClient(GATEWAY_URL);
       const [healthResponse] = await Promise.all([
@@ -67,6 +72,11 @@ export function ConnectionProvider({ children }: PropsWithChildren) {
   }, []);
 
   useEffect(() => {
+    if (!GATEWAY_URL) {
+      setPhase('offline');
+      setError(GATEWAY_CONFIGURATION_ERROR);
+      return;
+    }
     void loadStoredConnection()
       .then(async (stored) => {
         const key = stored.deviceToken ?? '';
@@ -84,6 +94,11 @@ export function ConnectionProvider({ children }: PropsWithChildren) {
   }, [validateStoredConnection]);
 
   const connect = useCallback(async (pairingCode: string) => {
+    if (!GATEWAY_URL) {
+      setPhase('offline');
+      setError(GATEWAY_CONFIGURATION_ERROR);
+      throw new Error(GATEWAY_CONFIGURATION_ERROR);
+    }
     const trimmed = pairingCode.trim();
     if (!/^\d{6}$/.test(trimmed)) throw new Error('请输入 6 位配对码');
     setPhase('connecting');
@@ -117,6 +132,11 @@ export function ConnectionProvider({ children }: PropsWithChildren) {
   }, []);
 
   const retry = useCallback(async () => {
+    if (!GATEWAY_URL) {
+      setPhase('offline');
+      setError(GATEWAY_CONFIGURATION_ERROR);
+      return;
+    }
     if (!deviceToken) {
       setPhase('unpaired');
       return;

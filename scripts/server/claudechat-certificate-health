@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-certificate=/etc/letsencrypt/live/gateway.example.com/fullchain.pem
+public_host=${CLAUDECHAT_PUBLIC_HOST:-}
+if [[ -z "$public_host" || ! "$public_host" =~ ^[A-Za-z0-9.-]+$ ]]; then
+  /usr/bin/logger -p daemon.err -t claudechat-certificate \
+    "CLAUDECHAT_PUBLIC_HOST is missing or invalid."
+  exit 2
+fi
+
+certificate="/etc/letsencrypt/live/$public_host/fullchain.pem"
 threshold_seconds=172800
 
 if [[ ! -r "$certificate" ]]; then
