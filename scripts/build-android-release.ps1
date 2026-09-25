@@ -15,10 +15,14 @@ $versionCode = [int]$appConfig.expo.android.versionCode
 if (!$version -or $versionCode -le 0) {
   throw 'apps/mobile/app.json must define expo.version and a positive expo.android.versionCode.'
 }
+$defaultAndroidSdk = if ($env:LOCALAPPDATA) {
+  Join-Path $env:LOCALAPPDATA 'Android\Sdk'
+} else {
+  $null
+}
 $javaCandidates = @(@(
   $JavaHome,
   $env:JAVA_HOME,
-  'D:\workspace\Projects\android-toolchain\jdk-17',
   'C:\Program Files\Android\Android Studio\jbr'
 ) | Where-Object { $_ -and (Test-Path -LiteralPath (Join-Path $_ 'bin\java.exe')) })
 
@@ -30,7 +34,7 @@ $JavaHome = $javaCandidates[0]
 $sdkCandidates = @(@(
   $AndroidSdkRoot,
   $env:ANDROID_SDK_ROOT,
-  'D:\workspace\Projects\android-toolchain\android-sdk'
+  $defaultAndroidSdk
 ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) })
 if ($sdkCandidates.Count -eq 0) {
   throw 'No Android SDK was found. Set ANDROID_HOME or pass -AndroidSdkRoot.'
