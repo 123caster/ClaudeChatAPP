@@ -1,6 +1,6 @@
 import { closeDatabase, createDatabase, type DatabaseClient } from '@claude-chat/database';
 import { eventEnvelopeSchema, type EventEnvelope } from '@claude-chat/protocol';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
@@ -11,6 +11,7 @@ import { buildApp } from '../app.js';
 import { FakeClaudeAdapter } from '../claude/fake-claude-adapter.js';
 import { EventStore } from '../events/event-store.js';
 import { EventStream } from '../events/event-stream.js';
+import { ModelService } from '../models/model-service.js';
 import { ProjectRegistry } from '../projects/project-registry.js';
 import { SessionService } from '../sessions/session-service.js';
 
@@ -21,6 +22,7 @@ type TestContext = {
   app: FastifyInstance;
   database: DatabaseClient;
   events: EventStore;
+  models: ModelService;
   projectId: string;
   projects: ProjectRegistry;
 };
@@ -33,20 +35,19 @@ function createContext(): TestContext {
   const projectRoot = mkdtempSync(join(tmpdir(), 'claude-chat-session-'));
   tempRoots.push(projectRoot);
   const projects = new ProjectRegistry(database.projects, () => new Date('2026-08-13T08:00:00Z'));
-  const [project] = projects.synchronize([
-    { displayName: 'ClaudeChatAPP', path: projectRoot },
-  ]);
+  const [project] = projects.synchronize([{ displayName: 'ClaudeChatAPP', path: projectRoot }]);
   const eventStream = new EventStream();
   const events = new EventStore(database.events, eventStream);
+  const models = new ModelService(database.models, () => new Date('2026-08-13T08:00:00Z'));
   const adapter = new FakeClaudeAdapter();
-  const sessions = new SessionService(database, projects, adapter, events);
+  const sessions = new SessionService(database, projects, adapter, events, undefined, models);
   const app = buildApp({
     logger: process.env.DEBUG_WEBSOCKET === '1',
     gatewayVersion: 'test-version',
     apiKey: API_KEY,
-    services: { projects, events, eventStream, sessions },
+    services: { projects, models, events, eventStream, sessions },
   });
-  const context = { adapter, app, database, events, projectId: project!.id, projects };
+  const context = { adapter, app, database, events, models, projectId: project!.id, projects };
   contexts.push(context);
   return context;
 }
@@ -110,6 +111,245 @@ async function waitForEvent(
 }
 
 describe('session HTTP and resumable events', () => {
+  it('uses and persists an existing project subdirectory for every turn', async () => {
+    const context = createContext();
+    const projectRoot = context.projects
+      .list()
+      .find(({ id }) => id === context.projectId)!.rootPath;
+    const childDirectory = join(projectRoot, 'myclaude', 'apps', 'mobile');
+    mkdirSync(childDirectory, { recursive: true });
+
+    const created = await context.app.inject({
+      method: 'POST',
+      url: '/v1/sessions',
+      headers: { 'x-api-key': API_KEY },
+      payload: {
+        requestId: 'workdir-create-1',
+        projectId: context.projectId,
+        workingDirectory: 'myclaude/apps/mobile',
+        message: 'Inspect this directory',
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const sessionId = (created.json() as { session: { id: string } }).session.id;
+    await waitForSessionStatus(context, sessionId, 'idle');
+    expect(context.database.sessions.get(sessionId)).toMatchObject({
+      workingDirectory: 'myclaude/apps/mobile',
+    });
+    expect(context.adapter.requests[0]?.cwd).toBe(childDirectory);
+
+    const continued = await context.app.inject({
+      method: 'POST',
+      url: `/v1/sessions/${sessionId}/messages`,
+      headers: { 'x-api-key': API_KEY },
+      payload: { requestId: 'workdir-message-1', message: 'Continue here' },
+    });
+    expect(continued.statusCode).toBe(200);
+    await waitForSessionStatus(context, sessionId, 'idle');
+    expect(context.adapter.requests[1]?.cwd).toBe(childDirectory);
+  });
+
+  it('rejects a working directory that escapes the project root', async () => {
+    const context = createContext();
+    const response = await context.app.inject({
+      method: 'POST',
+      url: '/v1/sessions',
+      headers: { 'x-api-key': API_KEY },
+      payload: {
+        requestId: 'workdir-invalid-1',
+        projectId: context.projectId,
+        workingDirectory: '../outside',
+        message: 'Must not run',
+      },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(context.adapter.requests).toHaveLength(0);
+  });
+
+  it.each([
+    [['delta', 'Context was compacted.'], '上下文压缩成功\n\nContext was compacted.'],
+    [['empty', ''], '上下文压缩成功'],
+  ] as const)('persists a readable compact %s result', async ([kind, output], expected) => {
+    const context = createContext();
+    context.adapter.enqueue(
+      kind === 'delta'
+        ? [{ type: 'delta', text: output }, { type: 'complete_turn' }]
+        : [{ type: 'complete_turn' }],
+    );
+    const created = await context.app.inject({
+      method: 'POST',
+      url: '/v1/sessions',
+      headers: { 'x-api-key': API_KEY },
+      payload: {
+        requestId: `compact-${kind}-1`,
+        projectId: context.projectId,
+        message: '/compact',
+      },
+    });
+    const sessionId = (created.json() as { session: { id: string } }).session.id;
+    await waitForSessionStatus(context, sessionId, 'idle');
+    expect(context.database.messages.listBySession(sessionId).at(-1)?.contentJson).toBe(
+      JSON.stringify({ text: expected }),
+    );
+  });
+
+  it('persists a sanitized compact failure result', async () => {
+    const context = createContext();
+    context.adapter.enqueue([
+      { type: 'fail', message: 'apiKey=secret-value failed at /home/ubuntu/private/config.json' },
+    ]);
+    const created = await context.app.inject({
+      method: 'POST',
+      url: '/v1/sessions',
+      headers: { 'x-api-key': API_KEY },
+      payload: {
+        requestId: 'compact-failure-1',
+        projectId: context.projectId,
+        message: '/compact',
+      },
+    });
+    const sessionId = (created.json() as { session: { id: string } }).session.id;
+    await waitForSessionStatus(context, sessionId, 'interrupted');
+    const content = context.database.messages.listBySession(sessionId).at(-1)?.contentJson ?? '';
+    expect(content).toContain('上下文压缩失败');
+    expect(content).toContain('[REDACTED]');
+    expect(content).toContain('[PATH]');
+    expect(content).not.toContain('secret-value');
+    expect(content).not.toContain('/home/ubuntu/private');
+  });
+
+  it('renames a session once and publishes the updated summary', async () => {
+    const context = createContext();
+    const created = await context.app.inject({
+      method: 'POST',
+      url: '/v1/sessions',
+      headers: { 'x-api-key': API_KEY },
+      payload: {
+        requestId: 'rename-create-1',
+        projectId: context.projectId,
+        message: 'Original title',
+      },
+    });
+    const sessionId = (created.json() as { session: { id: string } }).session.id;
+
+    const renamed = await context.app.inject({
+      method: 'POST',
+      url: `/v1/sessions/${sessionId}/rename`,
+      headers: { 'x-api-key': API_KEY },
+      payload: { requestId: 'rename-session-1', title: 'A clearer title' },
+    });
+    expect(renamed.statusCode).toBe(200);
+    expect(renamed.json()).toMatchObject({
+      requestId: 'rename-session-1',
+      session: { id: sessionId, title: 'A clearer title' },
+    });
+    expect(context.database.sessions.get(sessionId)).toMatchObject({ title: 'A clearer title' });
+    expect(context.database.events.listAfter(0, 100)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ requestId: 'rename-session-1', type: 'session.updated' }),
+      ]),
+    );
+
+    const replayed = await context.app.inject({
+      method: 'POST',
+      url: `/v1/sessions/${sessionId}/rename`,
+      headers: { 'x-api-key': API_KEY },
+      payload: { requestId: 'rename-session-1', title: 'A clearer title' },
+    });
+    expect(replayed.statusCode).toBe(200);
+    expect(
+      context.database.events
+        .listAfter(0, 100)
+        .filter((event) => event.requestId === 'rename-session-1'),
+    ).toHaveLength(1);
+  });
+
+  it('clears an interrupted session without retaining its messages or event replay history', async () => {
+    const context = createContext();
+    context.adapter.enqueue([
+      {
+        type: 'permission',
+        request: { toolCallId: null, toolName: 'Write', input: { path: 'blocked.txt' } },
+      },
+    ]);
+    const created = await context.app.inject({
+      method: 'POST',
+      url: '/v1/sessions',
+      headers: { 'x-api-key': API_KEY },
+      payload: {
+        requestId: 'clear-create-1',
+        projectId: context.projectId,
+        message: 'Write a file',
+      },
+    });
+    const sessionId = (created.json() as { session: { id: string } }).session.id;
+    await waitForSessionStatus(context, sessionId, 'waiting_permission');
+
+    const cleared = await context.app.inject({
+      method: 'POST',
+      url: `/v1/sessions/${sessionId}/clear`,
+      headers: { 'x-api-key': API_KEY },
+      payload: { requestId: 'clear-session-1' },
+    });
+    expect(cleared.statusCode).toBe(200);
+    expect(cleared.json()).toMatchObject({
+      requestId: 'clear-session-1',
+      session: { id: sessionId, status: 'idle', messages: [], toolCalls: [], permissions: [] },
+    });
+    expect(context.database.sessions.get(sessionId)).toMatchObject({
+      claudeSessionId: null,
+      status: 'idle',
+    });
+    expect(context.database.messages.listBySession(sessionId)).toEqual([]);
+    expect(context.database.toolCalls.listBySession(sessionId)).toEqual([]);
+    expect(context.database.permissions.listBySession(sessionId)).toEqual([]);
+    expect(
+      context.database.events.listAfter(0, 100).filter((event) => event.sessionId === sessionId),
+    ).toMatchObject([{ requestId: 'clear-session-1', type: 'session.updated' }]);
+
+    const replayed = await context.app.inject({
+      method: 'POST',
+      url: `/v1/sessions/${sessionId}/clear`,
+      headers: { 'x-api-key': API_KEY },
+      payload: { requestId: 'clear-session-1' },
+    });
+    expect(replayed.statusCode).toBe(200);
+    expect(replayed.json()).toEqual(cleared.json());
+  });
+
+  it('switches the model for one idle session without changing the Gateway default', async () => {
+    const context = createContext();
+    const firstModel = context.models.create({
+      name: 'DeepSeek',
+      baseUrl: 'https://api.deepseek.com/anthropic',
+      apiKey: 'model-key-a',
+      model: 'deepseek-chat',
+    });
+    const secondModel = context.models.createVariant(firstModel.id, 'deepseek-reasoner');
+    const created = await context.app.inject({
+      method: 'POST',
+      url: '/v1/sessions',
+      headers: { 'x-api-key': API_KEY },
+      payload: {
+        requestId: 'session-with-model',
+        projectId: context.projectId,
+        message: 'Use the default model first',
+      },
+    });
+    const sessionId = (created.json() as { session: { id: string } }).session.id;
+    await waitForSessionStatus(context, sessionId, 'idle');
+
+    const switched = await context.app.inject({
+      method: 'POST',
+      url: `/v1/sessions/${sessionId}/model`,
+      headers: { 'x-api-key': API_KEY },
+      payload: { requestId: 'switch-session-model', modelId: secondModel.id },
+    });
+    expect(switched.statusCode).toBe(200);
+    expect(context.database.sessions.get(sessionId)).toMatchObject({ modelId: secondModel.id });
+    expect(context.models.getActiveModelId()).toBe(firstModel.id);
+  });
+
   it('creates, runs and idempotently replays a fake Claude session', async () => {
     const context = createContext();
     const payload = {

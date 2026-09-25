@@ -1,4 +1,12 @@
-import { mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -87,6 +95,7 @@ describe.skipIf(process.platform !== 'win32')('Windows project path policy', () 
       upsert: (record) => {
         records = [record];
       },
+      delete: () => false,
     };
     const registry = new ProjectRegistry(repository, () => new Date('2026-08-13T08:00:00Z'));
     const [project] = registry.synchronize([{ displayName: 'Project', path: root }]);
@@ -126,6 +135,7 @@ describe.skipIf(process.platform !== 'win32')('Windows project path policy', () 
       upsert: (record) => {
         records = [...records.filter((existing) => existing.rootPath !== record.rootPath), record];
       },
+      delete: () => false,
     };
     const registry = new ProjectRegistry(repository, () => new Date('2026-08-13T08:00:00Z'));
     const [configured] = registry.synchronize([{ displayName: 'Root', path: root }]);
@@ -141,5 +151,55 @@ describe.skipIf(process.platform !== 'win32')('Windows project path policy', () 
 
     registry.synchronize([{ displayName: 'Root', path: root }]);
     expect(registry.list().some((record) => record.id === created.id)).toBe(true);
+  });
+
+  it('deletes regular workspace content but preserves home and registered roots', () => {
+    const root = temporaryDirectory();
+    mkdirSync(join(root, 'home', 'notes'), { recursive: true });
+    writeFileSync(join(root, 'home', 'notes', 'keep.txt'), 'protected');
+    writeFileSync(join(root, 'delete-me.txt'), 'remove');
+    let records: ProjectRecord[] = [];
+    const repository: ProjectRepository = {
+      list: () => records,
+      synchronize: (nextRecords) => {
+        const userRecords = records.filter((record) => record.origin === 'user');
+        records = [...userRecords, ...nextRecords];
+      },
+      upsert: (record) => {
+        records = [...records.filter((existing) => existing.id !== record.id), record];
+      },
+      delete: (id) => {
+        const before = records.length;
+        records = records.filter((record) => record.id !== id);
+        return records.length !== before;
+      },
+    };
+    const registry = new ProjectRegistry(repository, () => new Date('2026-08-13T08:00:00Z'));
+    const [configured] = registry.synchronize([{ displayName: 'Root', path: root }]);
+    const child = registry.addUserProject({
+      displayName: 'Child',
+      parentProjectId: configured!.id,
+      folderName: 'child',
+    });
+
+    expect(registry.createFile(configured!.id, 'created.md')).toBe('created.md');
+    expect(existsSync(join(root, 'created.md'))).toBe(true);
+    expect(() => registry.createFile(configured!.id, 'created.md')).toThrowError(ProjectPathError);
+    expect(() => registry.createFile(configured!.id, '../outside.md')).toThrowError(
+      ProjectPathError,
+    );
+
+    expect(registry.deleteFile(configured!.id, 'delete-me.txt')).toBe('delete-me.txt');
+    expect(existsSync(join(root, 'delete-me.txt'))).toBe(false);
+    expect(() => registry.deleteFile(configured!.id, 'home')).toThrowError(ProjectPathError);
+    expect(() => registry.deleteFile(configured!.id, 'home/notes/keep.txt')).toThrowError(
+      ProjectPathError,
+    );
+    expect(() => registry.deleteFile(configured!.id, '../outside')).toThrowError(ProjectPathError);
+
+    registry.deleteFile(configured!.id, 'child');
+    expect(existsSync(child.rootPath)).toBe(false);
+    expect(registry.list().some((record) => record.id === child.id)).toBe(false);
+    expect(existsSync(join(root, 'home', 'notes', 'keep.txt'))).toBe(true);
   });
 });

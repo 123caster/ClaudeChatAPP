@@ -1,15 +1,19 @@
+import { existsSync } from 'node:fs';
+import { win32 } from 'node:path';
+
 import {
   query,
   type CanUseTool,
   type Options,
   type SDKMessage,
+  type SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk';
 
 import type { ClaudeAdapter, ClaudeDomainEvent, ClaudeTurnRequest } from './claude-adapter.js';
 import { mapAgentMessage } from './agent-event-mapper.js';
 
 export type AgentSdkQuery = (params: {
-  prompt: string;
+  prompt: string | AsyncIterable<SDKUserMessage>;
   options: Options;
 }) => AsyncIterable<SDKMessage>;
 
@@ -25,8 +29,8 @@ export function resolveClaudeExecutablePath(
   platform: NodeJS.Platform = process.platform,
 ): string | undefined {
   if (!path || platform !== 'win32' || !path.toLowerCase().endsWith('.cmd')) return path;
-  const nativePath = resolve(
-    dirname(path),
+  const nativePath = win32.resolve(
+    win32.dirname(path),
     'node_modules',
     '@anthropic-ai',
     'claude-code',
@@ -68,13 +72,6 @@ export class AgentSdkClaudeAdapter implements ClaudeAdapter {
 
     const canUseTool: CanUseTool = async (toolName, input, context) => {
       if (request.signal.aborted || context.signal.aborted) throw abortError();
-      if (toolName === 'AskUserQuestion') {
-        return {
-          behavior: 'deny',
-          message: 'Interactive questions are not supported by this mobile client yet.',
-          toolUseID: context.toolUseID,
-        };
-      }
       const decision = await request.requestPermission({
         toolCallId: context.toolUseID,
         toolName,
@@ -86,7 +83,10 @@ export class AgentSdkClaudeAdapter implements ClaudeAdapter {
       }
       return {
         behavior: 'deny',
-        message: decision.message ?? 'Tool use denied from the mobile client.',
+        message:
+          toolName === 'AskUserQuestion' && decision.message
+            ? `User response: ${decision.message}`
+            : (decision.message ?? 'Tool use denied from the mobile client.'),
         toolUseID: context.toolUseID,
       };
     };
@@ -98,7 +98,10 @@ export class AgentSdkClaudeAdapter implements ClaudeAdapter {
         canUseTool,
         cwd: request.cwd,
         includePartialMessages: true,
-        permissionMode: 'default',
+        permissionMode: request.permissionMode ?? 'default',
+        ...(request.permissionMode === 'bypassPermissions'
+          ? { allowDangerouslySkipPermissions: true }
+          : {}),
         settingSources: [],
         tools: { type: 'preset', preset: 'claude_code' },
         // Pass the gateway process environment through to the Claude Code child
@@ -133,5 +136,3 @@ export class AgentSdkClaudeAdapter implements ClaudeAdapter {
     }
   }
 }
-import { existsSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';

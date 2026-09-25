@@ -8,7 +8,10 @@ export type ProjectPathErrorCode =
   | 'PATH_NOT_FOUND'
   | 'PATH_MUST_BE_DIRECTORY'
   | 'PATH_OUTSIDE_ALLOWED_ROOTS'
-  | 'INVALID_CHILD_NAME';
+  | 'PATH_ALREADY_EXISTS'
+  | 'INVALID_CHILD_NAME'
+  | 'CANNOT_DELETE_CONFIG_ROOT'
+  | 'CANNOT_DELETE_HOME';
 
 export class ProjectPathError extends Error {
   public constructor(
@@ -120,7 +123,9 @@ export function sanitizeChildName(childName: string): string {
 
 export function resolveChildPath(allowedRootRealPath: string, childName: string): string {
   const safeName = sanitizeChildName(childName);
-  const candidate = pathImplementation.resolve(pathImplementation.join(allowedRootRealPath, safeName));
+  const candidate = pathImplementation.resolve(
+    pathImplementation.join(allowedRootRealPath, safeName),
+  );
   if (candidate === allowedRootRealPath || !isPathContained(allowedRootRealPath, candidate)) {
     throw new ProjectPathError(
       'PATH_OUTSIDE_ALLOWED_ROOTS',

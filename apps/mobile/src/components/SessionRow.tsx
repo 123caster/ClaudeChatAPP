@@ -1,5 +1,5 @@
 import type { SessionSummary } from '@claude-chat/protocol';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { SessionStatus } from '@/components/SessionStatus';
 import { colors } from '@/theme/colors';
@@ -61,8 +61,8 @@ const styles = StyleSheet.create({
   pressed: { backgroundColor: colors.surfacePressed },
   avatar: {
     alignItems: 'center',
-    backgroundColor: colors.text,
-    borderRadius: 4,
+    backgroundColor: colors.brand,
+    borderRadius: 8,
     height: 44,
     justifyContent: 'center',
     marginRight: spacing.control,
@@ -70,8 +70,18 @@ const styles = StyleSheet.create({
   },
   avatarText: { color: colors.textOnBrand, fontSize: 21, fontWeight: '700' },
   copy: { flex: 1, minWidth: 0 },
-  title: { color: colors.text, fontSize: 16, fontWeight: '500' },
-  preview: { color: colors.muted, fontSize: 13, marginTop: 5 },
+  title: {
+    color: colors.text,
+    fontFamily: Platform.select({ android: 'sans-serif-medium', default: undefined }),
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  preview: {
+    color: colors.muted,
+    fontFamily: Platform.select({ android: 'sans-serif', default: undefined }),
+    fontSize: 13,
+    marginTop: 5,
+  },
   meta: {
     alignItems: 'flex-end',
     alignSelf: 'stretch',

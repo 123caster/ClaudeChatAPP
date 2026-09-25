@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+/usr/bin/install -d -m 0755 /var/lib/claudechat-gateway/tls
+/usr/bin/install -m 0644 /etc/letsencrypt/live/gateway.example.com/fullchain.pem \
+  /var/lib/claudechat-gateway/tls/fullchain.pem
+/usr/sbin/nginx -t
+/usr/bin/systemctl reload nginx.service
+/usr/bin/logger -t claudechat-certificate "Certificate renewed and Nginx reloaded."

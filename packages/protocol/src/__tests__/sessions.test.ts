@@ -1,6 +1,7 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 
 import type {
+  AttachmentSummary,
   CreateSessionRequest,
   CreateSessionResponse,
   EventEnvelope,
@@ -15,6 +16,7 @@ import type {
 
 import {
   PROTOCOL_VERSION,
+  attachmentSummarySchema,
   createSessionRequestSchema,
   createSessionResponseSchema,
   eventEnvelopeSchema,
@@ -31,6 +33,7 @@ const sessionId = '11111111-1111-4111-8111-111111111111';
 const messageId = '22222222-2222-4222-8222-222222222222';
 const toolCallId = '33333333-3333-4333-8333-333333333333';
 const permissionId = '44444444-4444-4444-8444-444444444444';
+const attachmentId = '55555555-5555-4555-8555-555555555555';
 const now = '2026-08-13T08:00:00.000Z';
 const later = '2026-08-13T08:10:00.000Z';
 
@@ -51,6 +54,17 @@ const message = {
   role: 'user' as const,
   content: 'Please add the event protocol.',
   isPartial: false,
+  createdAt: now,
+};
+
+const attachment = {
+  id: attachmentId,
+  kind: 'image' as const,
+  name: 'reference.png',
+  mimeType: 'image/png',
+  size: 1024,
+  status: 'ready' as const,
+  previewAvailable: true,
   createdAt: now,
 };
 
@@ -108,6 +122,7 @@ describe('session HTTP contract', () => {
     >();
     expectTypeOf<SessionSummary>().toMatchObjectType<{ id: string; status: SessionStatus }>();
     expectTypeOf<SessionDetail>().toHaveProperty('messages');
+    expectTypeOf<AttachmentSummary>().toHaveProperty('mimeType');
     expectTypeOf<CreateSessionRequest>().toHaveProperty('requestId');
     expectTypeOf<CreateSessionResponse>().toHaveProperty('session');
     expectTypeOf<SendMessageRequest>().toHaveProperty('message');
@@ -115,6 +130,57 @@ describe('session HTTP contract', () => {
     expectTypeOf<PermissionDecisionRequest>().toHaveProperty('decision');
     expectTypeOf<SessionsResponse>().toHaveProperty('sessions');
     expectTypeOf<EventEnvelope>().toHaveProperty('type');
+  });
+
+  it('validates strict attachment summaries on messages', () => {
+    expect(attachmentSummarySchema.parse(attachment)).toEqual(attachment);
+    expect(
+      sessionDetailSchema.parse({
+        ...sessionDetail,
+        messages: [{ ...message, attachments: [attachment] }],
+      }).messages[0]?.attachments,
+    ).toEqual([attachment]);
+    expect(
+      attachmentSummarySchema.safeParse({ ...attachment, storagePath: '/secret' }).success,
+    ).toBe(false);
+  });
+
+  it('allows attachment-only messages and enforces attachment boundaries', () => {
+    expect(
+      createSessionRequestSchema.safeParse({
+        requestId: 'request_create_with_image',
+        projectId: 'project_123',
+        message: '',
+        attachmentIds: [attachmentId],
+      }).success,
+    ).toBe(true);
+    expect(
+      sendMessageRequestSchema.safeParse({
+        requestId: 'request_image',
+        message: '   ',
+        attachmentIds: [attachmentId],
+      }).success,
+    ).toBe(true);
+    expect(
+      sendMessageRequestSchema.safeParse({ requestId: 'request_empty', message: '   ' }).success,
+    ).toBe(false);
+    expect(
+      sendMessageRequestSchema.safeParse({
+        requestId: 'request_too_many',
+        message: 'Review these',
+        attachmentIds: Array.from(
+          { length: 10 },
+          (_, index) => `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+        ),
+      }).success,
+    ).toBe(false);
+    expect(
+      sendMessageRequestSchema.safeParse({
+        requestId: 'request_duplicate',
+        message: 'Review this',
+        attachmentIds: [attachmentId, attachmentId],
+      }).success,
+    ).toBe(false);
   });
 
   it('accepts exactly the designed session states', () => {
@@ -145,9 +211,13 @@ describe('session HTTP contract', () => {
       createSessionRequestSchema.parse({
         requestId: 'request_create',
         projectId: 'project_123',
+        workingDirectory: 'myclaude/apps/mobile',
         message: 'Start here',
       }),
-    ).toMatchObject({ requestId: 'request_create' });
+    ).toMatchObject({
+      requestId: 'request_create',
+      workingDirectory: 'myclaude/apps/mobile',
+    });
     expect(
       sendMessageRequestSchema.parse({ requestId: 'request_message', message: 'Continue' }),
     ).toMatchObject({ requestId: 'request_message' });
@@ -268,6 +338,7 @@ describe('session event contract', () => {
       'session.snapshot',
       'session.created',
       'session.updated',
+      'session.deleted',
       'message.created',
       'assistant.delta',
       'tool.started',
@@ -276,6 +347,12 @@ describe('session event contract', () => {
       'permission.resolved',
       'turn.completed',
       'turn.failed',
+      'scheduled-task.created',
+      'scheduled-task.updated',
+      'scheduled-task.deleted',
+      'scheduled-run.created',
+      'scheduled-run.updated',
+      'scheduled-run.needs-attention',
       'server.notice',
     ]);
 

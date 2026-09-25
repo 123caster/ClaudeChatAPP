@@ -25,8 +25,16 @@ function errorMessage(message: Extract<SDKMessage, { type: 'result' }>): string 
 }
 
 export function mapAgentMessage(message: SDKMessage): ClaudeDomainEvent[] {
+  if (message.type === 'conversation_reset') {
+    return [{ type: 'turn.completed', claudeSessionId: message.new_conversation_id }];
+  }
+
   if (message.type === 'system' && message.subtype === 'init') {
     return [{ type: 'session.started', claudeSessionId: message.session_id }];
+  }
+
+  if (message.type === 'system' && message.subtype === 'local_command_output') {
+    return message.content ? [{ type: 'assistant.delta', text: message.content }] : [];
   }
 
   if (message.type === 'system' && message.subtype === 'permission_denied') {

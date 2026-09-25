@@ -22,6 +22,33 @@ describe('mapAgentMessage', () => {
     ).toEqual([{ type: 'assistant.delta', text: 'Hello' }]);
   });
 
+  it('treats a Claude /clear conversation reset as a successful turn with a new context', () => {
+    expect(
+      mapAgentMessage(
+        fixture({
+          type: 'conversation_reset',
+          session_id: 'claude-session-1',
+          new_conversation_id: 'claude-session-after-clear',
+          uuid: 'reset-event-1',
+        }),
+      ),
+    ).toEqual([{ type: 'turn.completed', claudeSessionId: 'claude-session-after-clear' }]);
+  });
+
+  it('maps local slash-command output into readable assistant text', () => {
+    expect(
+      mapAgentMessage(
+        fixture({
+          type: 'system',
+          subtype: 'local_command_output',
+          content: 'Compacted conversation context.',
+          session_id: 'claude-session-1',
+          uuid: 'local-command-1',
+        }),
+      ),
+    ).toEqual([{ type: 'assistant.delta', text: 'Compacted conversation context.' }]);
+  });
+
   it('maps tool use, tool result and permission denial', () => {
     expect(
       mapAgentMessage(

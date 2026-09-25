@@ -1,4 +1,5 @@
 import type {
+  AttachmentRecord,
   MessageRecord,
   PermissionRecord,
   ProjectRecord,
@@ -12,6 +13,7 @@ import type {
   SessionDetail,
   SessionSummary,
   ToolCall,
+  AttachmentSummary,
 } from '@claude-chat/protocol';
 
 function parseJson(value: string): unknown {
@@ -25,9 +27,25 @@ function jsonObject(value: unknown): Record<string, JsonValue> {
   return { value: value as JsonValue };
 }
 
-export function serializeMessage(record: MessageRecord): Message {
-  const content = parseJson(record.contentJson);
+function serializeAttachment(record: AttachmentRecord): AttachmentSummary {
   return {
+    id: record.id,
+    kind: record.kind,
+    name: record.name,
+    mimeType: record.mimeType,
+    size: record.size,
+    status: record.status,
+    previewAvailable: record.previewName !== null,
+    createdAt: record.createdAt,
+  };
+}
+
+export function serializeMessage(
+  record: MessageRecord,
+  attachments: readonly AttachmentRecord[] = [],
+): Message {
+  const content = parseJson(record.contentJson);
+  const message: Message = {
     id: record.id,
     sessionId: record.sessionId,
     role: record.role as Message['role'],
@@ -38,6 +56,10 @@ export function serializeMessage(record: MessageRecord): Message {
     isPartial: record.isPartial,
     createdAt: record.createdAt,
   };
+  if (attachments.length > 0) {
+    message.attachments = attachments.map(serializeAttachment);
+  }
+  return message;
 }
 
 export function serializeToolCall(record: ToolCallRecord): ToolCall {
@@ -103,6 +125,8 @@ export function serializeSessionSummary(
     id: session.id,
     projectId: session.projectId,
     projectDisplayName: project.displayName,
+    workingDirectory: session.workingDirectory ?? null,
+    modelId: session.modelId ?? null,
     title: session.title,
     status: session.status,
     lastMessagePreview: preview,
@@ -117,10 +141,20 @@ export function serializeSessionDetail(
   messages: readonly MessageRecord[],
   toolCalls: readonly ToolCallRecord[],
   permissions: readonly PermissionRecord[],
+  attachments: readonly AttachmentRecord[] = [],
 ): SessionDetail {
+  const attachmentsByMessage = new Map<string, AttachmentRecord[]>();
+  for (const attachment of attachments) {
+    if (!attachment.messageId) continue;
+    const grouped = attachmentsByMessage.get(attachment.messageId) ?? [];
+    grouped.push(attachment);
+    attachmentsByMessage.set(attachment.messageId, grouped);
+  }
   return {
     ...serializeSessionSummary(session, project, messages),
-    messages: messages.map(serializeMessage),
+    messages: messages.map((message) =>
+      serializeMessage(message, attachmentsByMessage.get(message.id) ?? []),
+    ),
     toolCalls: toolCalls.map(serializeToolCall),
     permissions: permissions.map(serializePermission),
   };

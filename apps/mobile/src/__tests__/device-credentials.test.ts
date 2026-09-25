@@ -6,7 +6,11 @@ jest.mock('expo-secure-store', () => ({
   WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'whenUnlockedThisDeviceOnly',
 }));
 
-import { clearApiKey, loadStoredConnection, saveApiKey } from '@/storage/device-credentials';
+import {
+  clearDeviceToken,
+  loadStoredConnection,
+  saveDeviceToken,
+} from '@/storage/device-credentials';
 
 const mockSecureStore = jest.requireMock('expo-secure-store') as {
   getItemAsync: jest.Mock;
@@ -17,29 +21,33 @@ const mockSecureStore = jest.requireMock('expo-secure-store') as {
 describe('device credentials', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('loads the api key from SecureStore', async () => {
-    mockSecureStore.getItemAsync.mockResolvedValue('secret-api-key');
-    await expect(loadStoredConnection()).resolves.toEqual({ apiKey: 'secret-api-key' });
+  it('loads the device token from SecureStore', async () => {
+    mockSecureStore.getItemAsync.mockResolvedValue('secret-device-token');
+    await expect(loadStoredConnection()).resolves.toEqual({ deviceToken: 'secret-device-token' });
+    expect(mockSecureStore.getItemAsync).toHaveBeenCalledWith('claude-chat.device-token');
   });
 
-  it('returns a null api key when nothing is stored', async () => {
+  it('returns a null device token when nothing is stored', async () => {
     mockSecureStore.getItemAsync.mockResolvedValue(null);
-    await expect(loadStoredConnection()).resolves.toEqual({ apiKey: null });
+    await expect(loadStoredConnection()).resolves.toEqual({ deviceToken: null });
   });
 
-  it('writes the api key only to SecureStore', async () => {
+  it('writes the device token and removes the legacy api key', async () => {
     mockSecureStore.setItemAsync.mockResolvedValue(undefined);
-    await saveApiKey('secret-api-key');
+    mockSecureStore.deleteItemAsync.mockResolvedValue(undefined);
+    await saveDeviceToken('secret-device-token');
     expect(mockSecureStore.setItemAsync).toHaveBeenCalledWith(
-      'claude-chat.api-key',
-      'secret-api-key',
+      'claude-chat.device-token',
+      'secret-device-token',
       { keychainAccessible: 'whenUnlockedThisDeviceOnly' },
     );
+    expect(mockSecureStore.deleteItemAsync).toHaveBeenCalledWith('claude-chat.api-key');
   });
 
-  it('clears the api key from SecureStore', async () => {
+  it('clears current and legacy credentials from SecureStore', async () => {
     mockSecureStore.deleteItemAsync.mockResolvedValue(undefined);
-    await clearApiKey();
+    await clearDeviceToken();
+    expect(mockSecureStore.deleteItemAsync).toHaveBeenCalledWith('claude-chat.device-token');
     expect(mockSecureStore.deleteItemAsync).toHaveBeenCalledWith('claude-chat.api-key');
   });
 });

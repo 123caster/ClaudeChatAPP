@@ -32,6 +32,7 @@ export interface ProjectRepository {
   list(): ProjectRecord[];
   synchronize(records: readonly ProjectRecord[]): void;
   upsert(record: ProjectRecord): void;
+  delete(id: string): boolean;
 }
 
 class SqliteProjectRepository implements ProjectRepository {
@@ -86,6 +87,15 @@ class SqliteProjectRepository implements ProjectRepository {
       )
       .all() as ProjectRow[];
     return rows.map(mapProject);
+  }
+
+  public delete(id: string): boolean {
+    // Soft-hide only user-created workspaces. Configured roots (origin='config')
+    // must stay in the active set; they are the gateways' access boundary.
+    const result = this.database
+      .prepare(`UPDATE projects SET enabled = 0 WHERE id = $id AND origin = 'user'`)
+      .run({ $id: id });
+    return result.changes === 1 || result.changes === 1n;
   }
 }
 

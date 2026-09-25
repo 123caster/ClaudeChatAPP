@@ -1,0 +1,10 @@
+[Unit]
+Description=Renew ClaudeChatAPP short-lived IP certificate
+After=network-online.target nginx.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/snap/bin/certbot renew --quiet --deploy-hook /usr/local/sbin/claudechat-certbot-deploy-hook
+PrivateTmp=true
+NoNewPrivileges=true

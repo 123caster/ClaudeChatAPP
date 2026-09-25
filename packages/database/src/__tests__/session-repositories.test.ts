@@ -25,6 +25,8 @@ function session(id: string, status: SessionRecord['status'] = 'idle'): SessionR
     id,
     claudeSessionId: null,
     projectId: 'project-1',
+    workingDirectory: null,
+    modelId: null,
     title: id,
     status,
     createdAt,
@@ -36,15 +38,24 @@ function session(id: string, status: SessionRecord['status'] = 'idle'): SessionR
 describe('session repositories', () => {
   it('creates, reads, lists, updates and archives sessions', () => {
     const database = setup();
-    database.sessions.create(session('session-1'));
+    database.sessions.create({ ...session('session-1'), workingDirectory: 'myclaude/apps/mobile' });
 
-    expect(database.sessions.get('session-1')).toEqual(session('session-1'));
+    expect(database.sessions.get('session-1')).toEqual({
+      ...session('session-1'),
+      workingDirectory: 'myclaude/apps/mobile',
+    });
     expect(
       database.sessions.updateClaudeSessionId('session-1', 'claude-1', '2026-08-13T08:01:00.000Z'),
     ).toMatchObject({ claudeSessionId: 'claude-1' });
     expect(
       database.sessions.updateStatus('session-1', 'running', '2026-08-13T08:02:00.000Z'),
     ).toMatchObject({ status: 'running' });
+    expect(
+      database.sessions.updateTitle('session-1', 'Renamed session', '2026-08-13T08:02:15.000Z'),
+    ).toMatchObject({ title: 'Renamed session', updatedAt: '2026-08-13T08:02:15.000Z' });
+    expect(
+      database.sessions.setModel('session-1', 'model-1', '2026-08-13T08:02:30.000Z'),
+    ).toMatchObject({ modelId: 'model-1' });
     expect(database.sessions.list()).toHaveLength(1);
     expect(database.sessions.archive('session-1', '2026-08-13T08:03:00.000Z')).toMatchObject({
       status: 'archived',
@@ -52,6 +63,23 @@ describe('session repositories', () => {
     });
     expect(database.sessions.list()).toEqual([]);
     expect(database.sessions.list({ includeArchived: true })).toHaveLength(1);
+    closeDatabase(database);
+  });
+
+  it('keeps scheduled task sessions out of the ordinary conversation list', () => {
+    const database = setup();
+    database.sessions.create(session('chat-session'));
+    database.sessions.createScheduled(session('scheduled-session'));
+
+    expect(database.sessions.isScheduled('chat-session')).toBe(false);
+    expect(database.sessions.isScheduled('scheduled-session')).toBe(true);
+    expect(database.sessions.list().map((entry) => entry.id)).toEqual(['chat-session']);
+    expect(
+      database.sessions
+        .list({ includeScheduled: true })
+        .map((entry) => entry.id)
+        .sort(),
+    ).toEqual(['chat-session', 'scheduled-session']);
     closeDatabase(database);
   });
 

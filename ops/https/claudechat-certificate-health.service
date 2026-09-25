@@ -1,0 +1,9 @@
+[Unit]
+Description=Check ClaudeChatAPP HTTPS certificate expiry
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/claudechat-certificate-health
+PrivateTmp=true
+NoNewPrivileges=true

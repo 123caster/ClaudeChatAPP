@@ -33,6 +33,7 @@ function mapEvent(row: EventRow): EventRecord {
 
 export interface EventRepository {
   append(event: AppendEvent): EventRecord;
+  deleteBySession(sessionId: string): number;
   listAfter(after: number, limit: number): EventRecord[];
   currentId(): number;
   minimumId(): number;
@@ -56,6 +57,13 @@ class SqliteEventRepository implements EventRepository {
       });
 
     return { ...event, id: Number(result.lastInsertRowid) };
+  }
+
+  public deleteBySession(sessionId: string): number {
+    const result = this.database
+      .prepare('DELETE FROM events WHERE session_id = $sessionId')
+      .run({ $sessionId: sessionId });
+    return Number(result.changes);
   }
 
   public listAfter(after: number, limit: number): EventRecord[] {

@@ -6,7 +6,11 @@ import { useConnection } from '@/state/connection-store';
 export default function IndexRoute() {
   const connection = useConnection();
   if (connection.phase === 'hydrating') return <LoadingScreen />;
-  if (!connection.apiKey || connection.phase === 'unpaired' || connection.phase === 'connecting') {
+  if (
+    !connection.deviceToken ||
+    connection.phase === 'unpaired' ||
+    connection.phase === 'connecting'
+  ) {
     return <ConnectionScreen />;
   }
   return <SessionListScreen />;

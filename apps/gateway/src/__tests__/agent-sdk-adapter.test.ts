@@ -1,9 +1,47 @@
-import type { Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { Options, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { describe, expect, it } from 'vitest';
 
 import { AgentSdkClaudeAdapter, resolveClaudeExecutablePath } from '../claude/agent-sdk-adapter.js';
 
 describe('AgentSdkClaudeAdapter', () => {
+  it('passes a structured user-message stream through to the Agent SDK', async () => {
+    let capturedPrompt: string | AsyncIterable<SDKUserMessage> | undefined;
+    const adapter = new AgentSdkClaudeAdapter({
+      query: ({ prompt }) => {
+        capturedPrompt = prompt;
+        return (async function* (): AsyncIterable<SDKMessage> {
+          yield {
+            type: 'result',
+            subtype: 'success',
+            session_id: 'claude-session-1',
+            result: 'Done',
+          } as SDKMessage;
+        })();
+      },
+    });
+    const structured = (async function* (): AsyncIterable<SDKUserMessage> {
+      yield {
+        type: 'user',
+        message: { role: 'user', content: [{ type: 'text', text: 'Read the image.' }] },
+        parent_tool_use_id: null,
+      };
+    })();
+
+    const events = [];
+    for await (const event of adapter.runTurn({
+      localSessionId: 'local-1',
+      claudeSessionId: null,
+      prompt: structured,
+      cwd: 'D:\\Projects\\sample',
+      signal: new AbortController().signal,
+      requestPermission: async () => ({ decision: 'deny' }),
+    })) {
+      events.push(event);
+    }
+    expect(capturedPrompt).toBe(structured);
+    expect(events.at(-1)?.type).toBe('turn.completed');
+  });
+
   it('uses isolated settings, resumes sessions and bridges permission decisions', async () => {
     let captured: Options | undefined;
     const adapter = new AgentSdkClaudeAdapter({
@@ -77,7 +115,8 @@ describe('AgentSdkClaudeAdapter', () => {
     });
   });
 
-  it('fails closed for unsupported interactive questions', async () => {
+  it('bridges interactive questions through the durable permission flow', async () => {
+    const requests: unknown[] = [];
     const adapter = new AgentSdkClaudeAdapter({
       query: ({ options }) =>
         (async function* (): AsyncIterable<SDKMessage> {
@@ -90,7 +129,11 @@ describe('AgentSdkClaudeAdapter', () => {
               requestId: 'permission-1',
             },
           );
-          expect(decision).toMatchObject({ behavior: 'deny', toolUseID: 'question-1' });
+          expect(decision).toMatchObject({
+            behavior: 'deny',
+            message: 'User response: Continue with the default plan',
+            toolUseID: 'question-1',
+          });
           yield { type: 'future_event' } as unknown as SDKMessage;
         })(),
     });
@@ -101,11 +144,22 @@ describe('AgentSdkClaudeAdapter', () => {
       prompt: 'Ask',
       cwd: 'D:\\Projects\\sample',
       signal: new AbortController().signal,
-      requestPermission: async () => ({ decision: 'allow_once' }),
+      requestPermission: async (request) => {
+        requests.push(request);
+        return { decision: 'deny', message: 'Continue with the default plan' };
+      },
     })) {
       events.push(event);
     }
     expect(events).toEqual([]);
+    expect(requests).toEqual([
+      {
+        input: { questions: [] },
+        reason: undefined,
+        toolCallId: 'question-1',
+        toolName: 'AskUserQuestion',
+      },
+    ]);
   });
 
   it('sanitizes SDK startup and authentication failures', async () => {

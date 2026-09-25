@@ -3,20 +3,25 @@
   "main": "expo-router/entry",
   "version": "0.1.0",
   "dependencies": {
-    "@react-native-async-storage/async-storage": "2.2.0",
     "@claude-chat/protocol": "workspace:*",
-    "@react-native-community/netinfo": "12.0.1",
     "@expo/ui": "~57.0.10",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/netinfo": "12.0.1",
     "expo": "~57.0.12",
     "expo-build-properties": "~57.0.10",
     "expo-constants": "~57.0.10",
     "expo-device": "~57.0.1",
+    "expo-document-picker": "~57.0.2",
     "expo-font": "~57.0.1",
     "expo-glass-effect": "~57.0.1",
     "expo-image": "~57.0.2",
+    "expo-image-manipulator": "~57.0.17",
+    "expo-image-picker": "~57.0.17",
     "expo-linking": "~57.0.5",
+    "expo-notifications": "~57.0.19",
     "expo-router": "~57.0.12",
     "expo-secure-store": "~57.0.1",
+    "expo-speech-recognition": "^56.0.1",
     "expo-splash-screen": "~57.0.6",
     "expo-status-bar": "~57.0.1",
     "expo-symbols": "~57.0.2",
@@ -43,6 +48,7 @@
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
+    "android:release": "powershell -ExecutionPolicy Bypass -File ../../scripts/build-android-release.ps1",
     "export:android": "expo export --platform android --output-dir dist/android",
     "ios": "expo start --ios",
     "lint": "expo lint --max-warnings=0",
@@ -52,7 +58,10 @@
     "web": "expo start --web"
   },
   "jest": {
-    "preset": "jest-expo"
+    "preset": "jest-expo",
+    "setupFilesAfterEnv": [
+      "<rootDir>/src/test-setup.ts"
+    ]
   },
   "private": true
 }

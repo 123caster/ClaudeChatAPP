@@ -22,9 +22,10 @@ export type ClaudeDomainEvent =
 export type ClaudeTurnRequest = {
   localSessionId: string;
   claudeSessionId: string | null;
-  prompt: string;
+  prompt: string | AsyncIterable<SDKUserMessage>;
   cwd: string;
   signal: AbortSignal;
+  permissionMode?: 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions';
   modelConfig?: {
     baseUrl: string;
     apiKey: string;
@@ -36,3 +37,4 @@ export type ClaudeTurnRequest = {
 export interface ClaudeAdapter {
   runTurn(request: ClaudeTurnRequest): AsyncIterable<ClaudeDomainEvent>;
 }
+import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';

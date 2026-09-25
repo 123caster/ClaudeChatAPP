@@ -1,22 +1,27 @@
 import * as SecureStore from 'expo-secure-store';
 
-const apiKeyKey = 'claude-chat.api-key';
+const deviceTokenKey = 'claude-chat.device-token';
+const legacyApiKeyKey = 'claude-chat.api-key';
 
 export type StoredConnection = {
-  apiKey: string | null;
+  deviceToken: string | null;
 };
 
 export async function loadStoredConnection(): Promise<StoredConnection> {
-  const apiKey = await SecureStore.getItemAsync(apiKeyKey);
-  return { apiKey };
+  const deviceToken = await SecureStore.getItemAsync(deviceTokenKey);
+  return { deviceToken };
 }
 
-export async function saveApiKey(apiKey: string): Promise<void> {
-  await SecureStore.setItemAsync(apiKeyKey, apiKey, {
+export async function saveDeviceToken(deviceToken: string): Promise<void> {
+  await SecureStore.setItemAsync(deviceTokenKey, deviceToken, {
     keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
   });
+  await SecureStore.deleteItemAsync(legacyApiKeyKey);
 }
 
-export async function clearApiKey(): Promise<void> {
-  await SecureStore.deleteItemAsync(apiKeyKey);
+export async function clearDeviceToken(): Promise<void> {
+  await Promise.all([
+    SecureStore.deleteItemAsync(deviceTokenKey),
+    SecureStore.deleteItemAsync(legacyApiKeyKey),
+  ]);
 }

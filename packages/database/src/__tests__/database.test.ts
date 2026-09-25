@@ -22,20 +22,40 @@ describe('database', () => {
       .map((row) => (row as { name: string }).name);
 
     expect(tables).toEqual([
+      'attachments',
       'devices',
       'events',
       'messages',
       'models',
       'permission_requests',
       'projects',
+      'push_deliveries',
+      'push_subscriptions',
+      'scheduled_runs',
+      'scheduled_tasks',
       'schema_migrations',
       'sessions',
       'tool_calls',
       'write_requests',
     ]);
     expect(database.prepare('SELECT COUNT(*) AS count FROM schema_migrations').get()).toMatchObject(
-      { count: 7 },
+      { count: 12 },
     );
+    expect(
+      database.prepare(`SELECT name FROM pragma_table_info('sessions') WHERE name = $name`).get({
+        $name: 'working_directory',
+      }),
+    ).toMatchObject({ name: 'working_directory' });
+    expect(
+      database.prepare(`SELECT name FROM pragma_table_info('models') WHERE name = $name`).get({
+        $name: 'supports_images',
+      }),
+    ).toMatchObject({ name: 'supports_images' });
+    expect(
+      database.prepare(`SELECT name FROM pragma_table_info('sessions') WHERE name = $name`).get({
+        $name: 'kind',
+      }),
+    ).toMatchObject({ name: 'kind' });
 
     database.close();
   });

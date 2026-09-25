@@ -1,1 +1,1 @@
-export const GATEWAY_URL = 'http://gateway.example.com:43110';
+export const GATEWAY_URL = 'https://gateway.example.com';

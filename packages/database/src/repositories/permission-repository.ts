@@ -55,6 +55,7 @@ function mapPermission(row: PermissionRow): PermissionRecord {
 export interface PermissionRepository {
   get(id: string): PermissionRecord | null;
   listBySession(sessionId: string): PermissionRecord[];
+  deleteBySession(sessionId: string): number;
   listUnresolved(): PermissionRecord[];
   create(record: PermissionRecord): PermissionRecord;
   decide(
@@ -93,6 +94,13 @@ class SqlitePermissionRepository implements PermissionRepository {
       )
       .all({ $sessionId: sessionId }) as PermissionRow[];
     return rows.map(mapPermission);
+  }
+
+  public deleteBySession(sessionId: string): number {
+    const result = this.database
+      .prepare('DELETE FROM permission_requests WHERE session_id = $sessionId')
+      .run({ $sessionId: sessionId });
+    return Number(result.changes);
   }
 
   public listUnresolved(): PermissionRecord[] {

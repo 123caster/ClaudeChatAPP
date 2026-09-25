@@ -12,6 +12,7 @@ describe('EventStore replay', () => {
         appendCount += 1;
         return { ...event, id: 1 };
       },
+      deleteBySession: () => 0,
       listAfter: () => [],
       currentId: () => 0,
       minimumId: () => 0,
@@ -57,6 +58,7 @@ describe('EventStore replay', () => {
       append: () => {
         throw new Error('not used');
       },
+      deleteBySession: () => 0,
       listAfter: () => [],
       currentId: () => 12,
       minimumId: () => 5,
@@ -80,6 +82,7 @@ describe('EventStore replay', () => {
       append: () => {
         throw new Error('not used');
       },
+      deleteBySession: () => 0,
       listAfter: () => records,
       currentId: () => 6,
       minimumId: () => 1,

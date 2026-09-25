@@ -5,7 +5,7 @@ type EventClientCallbacks = {
   onStateChange: (state: 'connecting' | 'open' | 'closed') => void;
 };
 
-type WebSocketFactory = (url: string, apiKey: string) => WebSocket;
+type WebSocketFactory = (url: string, deviceToken: string) => WebSocket;
 
 type NativeWebSocketOptions = {
   headers: Record<string, string>;
@@ -26,7 +26,7 @@ export class EventClient {
 
   public constructor(
     private readonly gatewayUrl: string,
-    private readonly apiKey: string,
+    private readonly deviceToken: string,
     private readonly callbacks: EventClientCallbacks,
     private readonly webSocketFactory: WebSocketFactory = createNativeWebSocket,
   ) {}
@@ -59,7 +59,7 @@ export class EventClient {
     const wsUrl = new URL('/v1/events', this.gatewayUrl);
     wsUrl.protocol = wsUrl.protocol === 'https:' ? 'wss:' : 'ws:';
     wsUrl.searchParams.set('after', String(this.after));
-    const socket = this.webSocketFactory(wsUrl.toString(), this.apiKey);
+    const socket = this.webSocketFactory(wsUrl.toString(), this.deviceToken);
     this.socket = socket;
 
     socket.onopen = () => {
@@ -106,7 +106,7 @@ export class EventClient {
   }
 }
 
-function createNativeWebSocket(url: string, apiKey: string): WebSocket {
+function createNativeWebSocket(url: string, deviceToken: string): WebSocket {
   const Socket = WebSocket as unknown as NativeWebSocketConstructor;
-  return new Socket(url, [], { headers: { 'X-API-Key': apiKey } });
+  return new Socket(url, [], { headers: { Authorization: `Bearer ${deviceToken}` } });
 }

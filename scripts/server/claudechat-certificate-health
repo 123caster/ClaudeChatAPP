@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+certificate=/etc/letsencrypt/live/gateway.example.com/fullchain.pem
+threshold_seconds=172800
+
+if [[ ! -r "$certificate" ]]; then
+  /usr/bin/logger -p daemon.err -t claudechat-certificate "Certificate is missing or unreadable."
+  exit 1
+fi
+
+if ! /usr/bin/openssl x509 -checkend "$threshold_seconds" -noout -in "$certificate"; then
+  expires=$(/usr/bin/openssl x509 -enddate -noout -in "$certificate" | cut -d= -f2-)
+  /usr/bin/logger -p daemon.err -t claudechat-certificate "Certificate expires within 48 hours: $expires"
+  exit 1
+fi
+
+expires=$(/usr/bin/openssl x509 -enddate -noout -in "$certificate" | cut -d= -f2-)
+/usr/bin/logger -t claudechat-certificate "Certificate healthy until $expires"

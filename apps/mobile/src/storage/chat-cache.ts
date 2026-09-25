@@ -17,7 +17,7 @@ export async function loadCachedSession(sessionId: string): Promise<SessionDetai
 export async function saveCachedSession(detail: SessionDetail): Promise<void> {
   const compact: SessionDetail = {
     ...detail,
-    messages: detail.messages.slice(-100),
+    messages: detail.messages.slice(-200),
     toolCalls: detail.toolCalls.slice(-50),
     permissions: detail.permissions.slice(-50),
   };

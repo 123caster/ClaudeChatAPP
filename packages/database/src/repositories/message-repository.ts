@@ -32,6 +32,7 @@ function mapMessage(row: MessageRow): MessageRecord {
 export interface MessageRepository {
   get(id: string): MessageRecord | null;
   listBySession(sessionId: string): MessageRecord[];
+  deleteBySession(sessionId: string): number;
   create(record: MessageRecord): MessageRecord;
   updateContent(id: string, contentJson: string, isPartial: boolean): MessageRecord | null;
 }
@@ -56,10 +57,17 @@ class SqliteMessageRepository implements MessageRepository {
         `SELECT id, session_id, role, content_json, is_partial, created_at
          FROM messages
          WHERE session_id = $sessionId
-         ORDER BY created_at, id`,
+         ORDER BY created_at, rowid`,
       )
       .all({ $sessionId: sessionId }) as MessageRow[];
     return rows.map(mapMessage);
+  }
+
+  public deleteBySession(sessionId: string): number {
+    const result = this.database
+      .prepare('DELETE FROM messages WHERE session_id = $sessionId')
+      .run({ $sessionId: sessionId });
+    return Number(result.changes);
   }
 
   public create(record: MessageRecord): MessageRecord {

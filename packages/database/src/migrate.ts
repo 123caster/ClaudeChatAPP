@@ -6,6 +6,11 @@ import { sessionEventRepositoriesMigration } from './migrations/004-session-even
 import { sessionInterruptionReasonMigration } from './migrations/005-session-interruption-reason.js';
 import { projectOriginMigration } from './migrations/006-project-origin.js';
 import { modelsMigration } from './migrations/007-models.js';
+import { sessionModelMigration } from './migrations/008-session-model.js';
+import { sessionWorkingDirectoryMigration } from './migrations/009-session-working-directory.js';
+import { attachmentsAndModelCapabilitiesMigration } from './migrations/010-attachments-and-model-capabilities.js';
+import { scheduledAutomationsMigration } from './migrations/011-scheduled-automations.js';
+import { pushDeliveriesMigration } from './migrations/012-push-deliveries.js';
 
 export type Migration = {
   version: number;
@@ -20,6 +25,11 @@ const migrations: Migration[] = [
   { version: 5, sql: sessionInterruptionReasonMigration },
   { version: 6, sql: projectOriginMigration },
   { version: 7, sql: modelsMigration },
+  { version: 8, sql: sessionModelMigration },
+  { version: 9, sql: sessionWorkingDirectoryMigration },
+  { version: 10, sql: attachmentsAndModelCapabilitiesMigration },
+  { version: 11, sql: scheduledAutomationsMigration },
+  { version: 12, sql: pushDeliveriesMigration },
 ];
 
 export function runMigrations(

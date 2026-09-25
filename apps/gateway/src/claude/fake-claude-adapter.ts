@@ -17,12 +17,14 @@ export type FakeClaudeStep =
 
 export class FakeClaudeAdapter implements ClaudeAdapter {
   private readonly scripts: FakeClaudeStep[][] = [];
+  public readonly requests: ClaudeTurnRequest[] = [];
 
   public enqueue(script: readonly FakeClaudeStep[]): void {
     this.scripts.push([...script]);
   }
 
   public async *runTurn(request: ClaudeTurnRequest): AsyncIterable<ClaudeDomainEvent> {
+    this.requests.push(request);
     const script = this.scripts.shift() ?? [
       { type: 'delta', text: `Echo: ${request.prompt}` },
       { type: 'complete_message', text: `Echo: ${request.prompt}` },

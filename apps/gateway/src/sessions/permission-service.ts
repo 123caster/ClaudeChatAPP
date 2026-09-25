@@ -69,8 +69,17 @@ export class PermissionService {
     return { permission, decision };
   }
 
-  public decideRecord(permissionId: string, decision: PermissionDecision): PermissionRequest {
-    const result = this.permissions.decide(permissionId, decision, null, this.now().toISOString());
+  public decideRecord(
+    permissionId: string,
+    decision: PermissionDecision,
+    answer: string | null = null,
+  ): PermissionRequest {
+    const result = this.permissions.decide(
+      permissionId,
+      decision,
+      answer,
+      this.now().toISOString(),
+    );
     if (result.status !== 'decided') {
       throw new PermissionNotResolvableError(result.status);
     }

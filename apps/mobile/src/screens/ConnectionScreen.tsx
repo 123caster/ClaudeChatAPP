@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -18,15 +18,15 @@ import { spacing } from '@/theme/spacing';
 
 export function ConnectionScreen() {
   const connection = useConnection();
-  const [apiKey, setApiKey] = useState('');
+  const [pairingCode, setPairingCode] = useState('');
   const [fieldError, setFieldError] = useState<string | null>(null);
   const busy = connection.phase === 'connecting';
 
   const submit = async () => {
     setFieldError(null);
     try {
-      await connection.connect(apiKey);
-      setApiKey('');
+      await connection.connect(pairingCode);
+      setPairingCode('');
     } catch (error) {
       if (error instanceof Error && !('code' in error)) setFieldError(error.message);
     }
@@ -47,19 +47,18 @@ export function ConnectionScreen() {
         <Text selectable style={styles.address}>
           {GATEWAY_URL}
         </Text>
-        <Text style={styles.label}>API Key</Text>
+        <Text style={styles.label}>一次性配对码</Text>
         <TextInput
-          autoCapitalize="none"
-          autoCorrect={false}
           editable={!busy}
-          onChangeText={setApiKey}
-          placeholder="填入服务器配置的密钥"
+          inputMode="numeric"
+          maxLength={6}
+          onChangeText={(value) => setPairingCode(value.replace(/\D/g, ''))}
+          placeholder="输入服务器显示的 6 位配对码"
           placeholderTextColor={colors.muted}
-          secureTextEntry
           style={styles.input}
-          value={apiKey}
+          value={pairingCode}
         />
-        <Text style={styles.hint}>登录后密钥会安全保存在本机，下次自动连接。</Text>
+        <Text style={styles.hint}>配对码 5 分钟内有效。设备令牌会安全保存在本机。</Text>
         {fieldError || connection.error ? (
           <Text accessibilityRole="alert" style={styles.error}>
             {fieldError ?? connection.error}
@@ -67,16 +66,16 @@ export function ConnectionScreen() {
         ) : null}
         <Pressable
           accessibilityRole="button"
-          disabled={busy || !apiKey.trim()}
+          disabled={busy || pairingCode.length !== 6}
           onPress={() => void submit()}
           style={({ pressed }) => [
             styles.button,
-            (busy || !apiKey.trim()) && styles.buttonDisabled,
+            (busy || pairingCode.length !== 6) && styles.buttonDisabled,
             pressed && styles.buttonPressed,
           ]}
         >
           {busy ? <ActivityIndicator color={colors.textOnBrand} size="small" /> : null}
-          <Text style={styles.buttonText}>{busy ? '连接中' : '连接'}</Text>
+          <Text style={styles.buttonText}>{busy ? '配对中' : '安全配对'}</Text>
         </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>

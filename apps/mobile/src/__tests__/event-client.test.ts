@@ -9,7 +9,7 @@ class FakeWebSocket {
 }
 
 describe('EventClient', () => {
-  it('keeps the api key out of the URL and passes it to the native socket factory', () => {
+  it('keeps the device token out of the URL and passes it to the native socket factory', () => {
     const socket = new FakeWebSocket();
     const factory = jest.fn((url: string, apiKey: string) => {
       void url;

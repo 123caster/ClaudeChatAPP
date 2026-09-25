@@ -1,0 +1,11 @@
+[Unit]
+Description=Check ClaudeChatAPP HTTPS certificate daily
+
+[Timer]
+OnCalendar=*-*-* 06:40:00
+RandomizedDelaySec=20m
+Persistent=true
+Unit=claudechat-certificate-health.service
+
+[Install]
+WantedBy=timers.target

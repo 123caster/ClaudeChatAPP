@@ -40,6 +40,67 @@ describe('chatReducer', () => {
     expect(state.detail?.messages[0]?.content).toBe('你好');
   });
 
+  it('replaces a transient partial response with the durable completed message', () => {
+    let state = chatReducer(initialChatState, { type: 'loaded', detail });
+    state = chatReducer(state, { type: 'event', event: delta(0, '正在') });
+    state = chatReducer(state, {
+      type: 'event',
+      event: {
+        protocolVersion: 1,
+        eventId: 6,
+        sessionId,
+        requestId: null,
+        emittedAt: '2026-08-13T00:00:02.000Z',
+        type: 'message.created',
+        payload: {
+          message: {
+            id: messageId,
+            sessionId,
+            role: 'assistant',
+            content: '正在完成回答。',
+            isPartial: false,
+            createdAt: '2026-08-13T00:00:01.000Z',
+          },
+        },
+      },
+    });
+    expect(state.detail?.messages[0]).toMatchObject({
+      content: '正在完成回答。',
+      isPartial: false,
+    });
+  });
+
+  it('ends the running state when a turn failure arrives', () => {
+    const state = chatReducer(chatReducer(initialChatState, { type: 'loaded', detail }), {
+      type: 'event',
+      event: {
+        protocolVersion: 1,
+        eventId: 7,
+        sessionId,
+        requestId: 'image-request',
+        emittedAt: '2026-08-13T00:00:03.000Z',
+        type: 'turn.failed',
+        payload: {
+          session: {
+            id: sessionId,
+            projectId: 'project',
+            projectDisplayName: 'Project',
+            title: 'Chat',
+            status: 'interrupted',
+            lastMessagePreview: null,
+            createdAt: '2026-08-13T00:00:00.000Z',
+            updatedAt: '2026-08-13T00:00:03.000Z',
+          },
+          code: 'MULTIMODAL_MODEL_UNAVAILABLE',
+          message: 'No image model is configured.',
+          retryable: false,
+        },
+      },
+    });
+
+    expect(state.detail?.status).toBe('interrupted');
+  });
+
   it('orders messages, tools, and permissions by creation time', () => {
     const timeline = buildTimeline({
       ...detail,

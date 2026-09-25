@@ -31,20 +31,29 @@ type SessionState = {
   error: string | null;
   eventState: 'idle' | 'connecting' | 'open' | 'closed';
   refresh: () => Promise<void>;
-  create: (projectId: string, message: string, requestId?: string) => Promise<string>;
+  create: (
+    projectId: string,
+    message: string,
+    requestId?: string,
+    workingDirectory?: string | null,
+    attachmentIds?: string[],
+  ) => Promise<string>;
   createProject: (
     displayName: string,
     parentProjectId: string,
     folderName: string,
   ) => Promise<ProjectSummary>;
+  removeProject: (projectId: string) => Promise<void>;
+  rename: (sessionId: string, title: string) => Promise<void>;
   archive: (sessionId: string) => Promise<void>;
+  remove: (sessionId: string) => Promise<void>;
   subscribe: (listener: (event: EventEnvelope) => void) => () => void;
 };
 
 const SessionContext = createContext<SessionState | null>(null);
 
 export function SessionProvider({ children }: PropsWithChildren) {
-  const { gatewayUrl, apiKey, resetConnection, setTransportOnline } = useConnection();
+  const { gatewayUrl, deviceToken, resetConnection, setTransportOnline } = useConnection();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [loading, setLoading] = useState(false);
@@ -55,17 +64,17 @@ export function SessionProvider({ children }: PropsWithChildren) {
   const eventListenersRef = useRef(new Set<(event: EventEnvelope) => void>());
 
   const handleUnauthorized = useCallback(async () => {
-    await resetConnection('API Key 不正确或已失效，请重新连接。');
+    await resetConnection('设备授权已失效，请重新配对。');
   }, [resetConnection]);
 
   const refresh = useCallback(async () => {
-    if (!gatewayUrl || !apiKey) return;
+    if (!gatewayUrl || !deviceToken) return;
     setLoading(true);
     try {
       const client = new GatewayClient(gatewayUrl);
       const [nextSessions, nextProjects] = await Promise.all([
-        client.sessions(apiKey),
-        client.projects(apiKey),
+        client.sessions(deviceToken),
+        client.projects(deviceToken),
       ]);
       setSessions(sortSessions(nextSessions));
       setProjects(nextProjects);
@@ -81,7 +90,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
     } finally {
       setLoading(false);
     }
-  }, [gatewayUrl, apiKey, handleUnauthorized, setTransportOnline]);
+  }, [gatewayUrl, deviceToken, handleUnauthorized, setTransportOnline]);
 
   const handleEvent = useCallback((event: EventEnvelope) => {
     // Deltas are transient and may reuse an event id. Resume only from durable events.
@@ -103,6 +112,8 @@ export function SessionProvider({ children }: PropsWithChildren) {
       setSessions(sortSessions(event.payload.sessions));
     } else if (event.type === 'session.created' || event.type === 'session.updated') {
       setSessions((current) => mergeSession(current, event.payload.session));
+    } else if (event.type === 'session.deleted') {
+      setSessions((current) => current.filter(({ id }) => id !== event.payload.sessionId));
     } else if (event.type === 'turn.completed' || event.type === 'turn.failed') {
       setSessions((current) => mergeSession(current, event.payload.session));
     }
@@ -120,13 +131,13 @@ export function SessionProvider({ children }: PropsWithChildren) {
     eventClientRef.current?.stop();
     eventClientRef.current = null;
     setEventState('idle');
-    if (!gatewayUrl || !apiKey) {
+    if (!gatewayUrl || !deviceToken) {
       setSessions([]);
       setProjects([]);
       return;
     }
 
-    const client = new EventClient(gatewayUrl, apiKey, {
+    const client = new EventClient(gatewayUrl, deviceToken, {
       onEvent: handleEvent,
       onStateChange: (state) => {
         setEventState(state);
@@ -159,42 +170,86 @@ export function SessionProvider({ children }: PropsWithChildren) {
       network();
       client.stop();
     };
-  }, [gatewayUrl, apiKey, handleEvent, refresh, setTransportOnline]);
+  }, [gatewayUrl, deviceToken, handleEvent, refresh, setTransportOnline]);
 
   const create = useCallback(
-    async (projectId: string, message: string, requestId = createRequestId()) => {
-      if (!gatewayUrl || !apiKey) throw new Error('Gateway is not connected.');
-      const request: CreateSessionRequest = { requestId, projectId, message: message.trim() };
-      const response = await new GatewayClient(gatewayUrl).createSession(apiKey, request);
+    async (
+      projectId: string,
+      message: string,
+      requestId = createRequestId(),
+      workingDirectory: string | null = null,
+      attachmentIds: string[] = [],
+    ) => {
+      if (!gatewayUrl || !deviceToken) throw new Error('Gateway is not connected.');
+      const request: CreateSessionRequest = {
+        requestId,
+        projectId,
+        message: message.trim(),
+        ...(workingDirectory ? { workingDirectory } : {}),
+        ...(attachmentIds.length ? { attachmentIds } : {}),
+      };
+      const response = await new GatewayClient(gatewayUrl).createSession(deviceToken, request);
       setSessions((current) => mergeSession(current, response.session));
       return response.session.id;
     },
-    [gatewayUrl, apiKey],
+    [gatewayUrl, deviceToken],
   );
 
   const archive = useCallback(
     async (sessionId: string) => {
-      if (!gatewayUrl || !apiKey) throw new Error('Gateway is not connected.');
-      await new GatewayClient(gatewayUrl).archiveSession(apiKey, sessionId, createRequestId());
+      if (!gatewayUrl || !deviceToken) throw new Error('Gateway is not connected.');
+      await new GatewayClient(gatewayUrl).archiveSession(deviceToken, sessionId, createRequestId());
       setSessions((current) => current.filter(({ id }) => id !== sessionId));
     },
-    [gatewayUrl, apiKey],
+    [gatewayUrl, deviceToken],
+  );
+
+  const rename = useCallback(
+    async (sessionId: string, title: string) => {
+      if (!gatewayUrl || !deviceToken) throw new Error('Gateway is not connected.');
+      const response = await new GatewayClient(gatewayUrl).renameSession(
+        deviceToken,
+        sessionId,
+        title.trim(),
+        createRequestId(),
+      );
+      setSessions((current) => mergeSession(current, response.session));
+    },
+    [gatewayUrl, deviceToken],
+  );
+
+  const remove = useCallback(
+    async (sessionId: string) => {
+      if (!gatewayUrl || !deviceToken) throw new Error('Gateway is not connected.');
+      await new GatewayClient(gatewayUrl).deleteSession(deviceToken, sessionId, createRequestId());
+      setSessions((current) => current.filter(({ id }) => id !== sessionId));
+    },
+    [gatewayUrl, deviceToken],
+  );
+
+  const removeProject = useCallback(
+    async (projectId: string) => {
+      if (!gatewayUrl || !deviceToken) throw new Error('Gateway is not connected.');
+      await new GatewayClient(gatewayUrl).deleteProject(deviceToken, projectId, createRequestId());
+      setProjects((current) => current.filter(({ id }) => id !== projectId));
+    },
+    [gatewayUrl, deviceToken],
   );
 
   const createProject = useCallback(
     async (displayName: string, parentProjectId: string, folderName: string) => {
-      if (!gatewayUrl || !apiKey) throw new Error('Gateway is not connected.');
+      if (!gatewayUrl || !deviceToken) throw new Error('Gateway is not connected.');
       const request: CreateProjectRequest = {
         requestId: createRequestId(),
         displayName: displayName.trim(),
         parentProjectId,
         folderName: folderName.trim(),
       };
-      const response = await new GatewayClient(gatewayUrl).createProject(apiKey, request);
+      const response = await new GatewayClient(gatewayUrl).createProject(deviceToken, request);
       setProjects((current) => [...current, response.project]);
       return response.project;
     },
-    [gatewayUrl, apiKey],
+    [gatewayUrl, deviceToken],
   );
 
   const value = useMemo(
@@ -207,7 +262,10 @@ export function SessionProvider({ children }: PropsWithChildren) {
       refresh,
       create,
       createProject,
+      removeProject,
+      rename,
       archive,
+      remove,
       subscribe,
     }),
     [
@@ -219,7 +277,10 @@ export function SessionProvider({ children }: PropsWithChildren) {
       refresh,
       create,
       createProject,
+      removeProject,
+      rename,
       archive,
+      remove,
       subscribe,
     ],
   );

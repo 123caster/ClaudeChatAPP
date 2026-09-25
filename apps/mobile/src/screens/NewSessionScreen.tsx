@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -13,9 +13,11 @@ import {
   View,
 } from 'react-native';
 
-import { createRequestId } from '@/api/gateway-client';
+import { createRequestId, GatewayClient } from '@/api/gateway-client';
+import { ChatComposer } from '@/components/chat/ChatComposer';
 import { ProjectPicker } from '@/components/ProjectPicker';
 import { useConnection } from '@/state/connection-store';
+import { useAttachmentUploadQueue } from '@/state/use-attachment-upload-queue';
 import { useSessions } from '@/state/session-store';
 import { colors } from '@/theme/colors';
 import { spacing } from '@/theme/spacing';
@@ -31,8 +33,25 @@ export function NewSessionScreen() {
   const [folderName, setFolderName] = useState('');
   const [folderParentId, setFolderParentId] = useState<string | null>(null);
   const [folderError, setFolderError] = useState<string | null>(null);
+  const [workingDirectory, setWorkingDirectory] = useState<string | null>(null);
+  const [directoryPickerOpen, setDirectoryPickerOpen] = useState(false);
+  const [directoryPath, setDirectoryPath] = useState('');
+  const [directoryEntries, setDirectoryEntries] = useState<
+    { name: string; relativePath: string; isDirectory: boolean }[]
+  >([]);
+  const [directoryLoading, setDirectoryLoading] = useState(false);
+  const [directoryError, setDirectoryError] = useState<string | null>(null);
   const requestId = useRef(createRequestId());
   const online = connection.phase === 'connected';
+  const client = useMemo(
+    () => (connection.gatewayUrl ? new GatewayClient(connection.gatewayUrl) : null),
+    [connection.gatewayUrl],
+  );
+  const attachmentQueue = useAttachmentUploadQueue({
+    apiKey: connection.deviceToken,
+    client,
+    onError: setError,
+  });
 
   useEffect(() => {
     if (store.projects.length === 1) setProjectId(store.projects[0]?.id ?? null);
@@ -45,8 +64,38 @@ export function NewSessionScreen() {
     setCreatingProject(true);
   };
 
+  const loadDirectory = async (path = '') => {
+    if (!projectId || !connection.deviceToken) return;
+    setDirectoryLoading(true);
+    setDirectoryError(null);
+    try {
+      const entries = await new GatewayClient(connection.gatewayUrl).listDirectoryAt(
+        connection.deviceToken,
+        projectId,
+        path,
+      );
+      setDirectoryPath(path);
+      setDirectoryEntries(entries.filter((entry) => entry.isDirectory));
+    } catch {
+      setDirectoryError('无法读取该目录，请确认项目仍在服务器上。');
+    } finally {
+      setDirectoryLoading(false);
+    }
+  };
+
+  const openDirectoryPicker = () => {
+    setDirectoryPickerOpen(true);
+    void loadDirectory(workingDirectory ?? '');
+  };
+
+  const goDirectoryUp = () => {
+    const segments = directoryPath.split('/').filter(Boolean);
+    segments.pop();
+    void loadDirectory(segments.join('/'));
+  };
+
   const submitFolder = async () => {
-    if (!folderName.trim() || !folderParentId || creatingProject) return;
+    if (!folderName.trim() || !folderParentId || busy) return;
     setBusy(true);
     setFolderError(null);
     try {
@@ -65,11 +114,27 @@ export function NewSessionScreen() {
   };
 
   const submit = async () => {
-    if (!projectId || !message.trim() || busy) return;
+    const hasAttachments = attachmentQueue.items.length > 0;
+    if (!projectId || (!message.trim() && !hasAttachments) || busy) return;
+    if (attachmentQueue.isUploading) {
+      setError('附件仍在上传，请稍候。');
+      return;
+    }
+    if (attachmentQueue.hasFailed) {
+      setError('有附件上传失败，请重试或移除后再创建会话。');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      const sessionId = await store.create(projectId, message, requestId.current);
+      const sessionId = await store.create(
+        projectId,
+        message,
+        requestId.current,
+        workingDirectory,
+        attachmentQueue.attachmentIds,
+      );
+      attachmentQueue.clearAfterSend();
       router.replace({ pathname: '/session/[sessionId]', params: { sessionId } });
     } catch {
       setError('创建失败，已保留你的任务内容。请恢复连接后重试。');
@@ -112,8 +177,29 @@ export function NewSessionScreen() {
             <Text style={styles.emptyCopy}>请在电脑上的 Gateway 配置中添加允许访问的项目。</Text>
           </View>
         ) : (
-          <ProjectPicker onSelect={setProjectId} projects={store.projects} selectedId={projectId} />
+          <ProjectPicker
+            onSelect={(nextProjectId) => {
+              setProjectId(nextProjectId);
+              setWorkingDirectory(null);
+            }}
+            projects={store.projects}
+            selectedId={projectId}
+          />
         )}
+        {projectId && online ? (
+          <Pressable
+            accessibilityRole="button"
+            disabled={busy}
+            onPress={openDirectoryPicker}
+            style={({ pressed }) => [styles.directoryButton, pressed && styles.buttonPressed]}
+          >
+            <Text style={styles.directoryButtonTitle}>工作目录</Text>
+            <Text numberOfLines={1} style={styles.directoryButtonPath}>
+              {workingDirectory ?? '项目根目录'}
+            </Text>
+            <Text style={styles.directoryButtonChevron}>›</Text>
+          </Pressable>
+        ) : null}
         {store.projects.length > 0 && online ? (
           <Pressable
             accessibilityRole="button"
@@ -125,15 +211,27 @@ export function NewSessionScreen() {
           </Pressable>
         ) : null}
         <Text style={styles.label}>第一条任务</Text>
-        <TextInput
-          editable={!busy}
-          multiline
-          onChangeText={setMessage}
+        <ChatComposer
+          attachments={attachmentQueue.items}
+          busy={busy}
+          draft={message}
+          online={online}
+          onAddAttachments={attachmentQueue.add}
+          onCancelRunning={() => undefined}
+          onChangeDraft={setMessage}
+          onError={setError}
+          onRemoveAttachment={attachmentQueue.remove}
+          onRetryAttachment={attachmentQueue.retry}
+          onSend={() => void submit()}
           placeholder="描述你想让 Claude 完成的任务"
-          placeholderTextColor={colors.muted}
-          style={styles.textarea}
-          textAlignVertical="top"
-          value={message}
+          running={false}
+          sendDisabled={
+            !online ||
+            !projectId ||
+            (!message.trim() && attachmentQueue.items.length === 0) ||
+            attachmentQueue.isUploading ||
+            attachmentQueue.hasFailed
+          }
         />
         {error ? (
           <Text accessibilityRole="alert" style={styles.error}>
@@ -142,11 +240,24 @@ export function NewSessionScreen() {
         ) : null}
         <Pressable
           accessibilityRole="button"
-          disabled={!online || !projectId || !message.trim() || busy}
+          disabled={
+            !online ||
+            !projectId ||
+            (!message.trim() && attachmentQueue.items.length === 0) ||
+            attachmentQueue.isUploading ||
+            attachmentQueue.hasFailed ||
+            busy
+          }
           onPress={() => void submit()}
           style={({ pressed }) => [
             styles.button,
-            (!online || !projectId || !message.trim() || busy) && styles.buttonDisabled,
+            (!online ||
+              !projectId ||
+              (!message.trim() && attachmentQueue.items.length === 0) ||
+              attachmentQueue.isUploading ||
+              attachmentQueue.hasFailed ||
+              busy) &&
+              styles.buttonDisabled,
             pressed && styles.buttonPressed,
           ]}
         >
@@ -154,6 +265,83 @@ export function NewSessionScreen() {
           <Text style={styles.buttonText}>{busy ? '创建中' : '创建会话'}</Text>
         </Pressable>
       </ScrollView>
+      <Modal
+        animationType="slide"
+        onRequestClose={() => setDirectoryPickerOpen(false)}
+        transparent
+        visible={directoryPickerOpen}
+      >
+        <View style={styles.directoryBackdrop}>
+          <View style={styles.directoryCard}>
+            <View style={styles.directoryHeader}>
+              <Pressable
+                accessibilityLabel="返回上级目录"
+                accessibilityRole="button"
+                disabled={!directoryPath || directoryLoading}
+                onPress={goDirectoryUp}
+                style={styles.directoryBack}
+              >
+                <Text style={styles.directoryBackText}>‹</Text>
+              </Pressable>
+              <View style={styles.directoryHeading}>
+                <Text style={styles.modalTitle}>选择工作目录</Text>
+                <Text numberOfLines={1} style={styles.directoryBreadcrumb}>
+                  {directoryPath || '项目根目录'}
+                </Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setDirectoryPickerOpen(false)}
+                style={styles.directoryClose}
+              >
+                <Text style={styles.directoryCloseText}>×</Text>
+              </Pressable>
+            </View>
+            {directoryLoading ? (
+              <View style={styles.loadingRow}>
+                <ActivityIndicator color={colors.brand} />
+                <Text style={styles.loadingText}>正在读取目录…</Text>
+              </View>
+            ) : (
+              <ScrollView style={styles.directoryList} keyboardShouldPersistTaps="handled">
+                {directoryEntries.map((entry) => (
+                  <Pressable
+                    accessibilityRole="button"
+                    key={entry.relativePath}
+                    onPress={() => void loadDirectory(entry.relativePath)}
+                    style={({ pressed }) => [
+                      styles.directoryEntry,
+                      pressed && styles.buttonPressed,
+                    ]}
+                  >
+                    <Text numberOfLines={1} style={styles.directoryEntryName}>
+                      {entry.name}
+                    </Text>
+                    <Text style={styles.directoryButtonChevron}>›</Text>
+                  </Pressable>
+                ))}
+                {!directoryError && directoryEntries.length === 0 ? (
+                  <Text style={styles.directoryEmpty}>当前目录没有子文件夹。</Text>
+                ) : null}
+              </ScrollView>
+            )}
+            {directoryError ? <Text style={styles.error}>{directoryError}</Text> : null}
+            <Pressable
+              accessibilityRole="button"
+              disabled={directoryLoading}
+              onPress={() => {
+                setWorkingDirectory(directoryPath || null);
+                setDirectoryPickerOpen(false);
+              }}
+              style={[styles.button, directoryLoading && styles.buttonDisabled]}
+            >
+              <Text style={styles.buttonText}>
+                {directoryPath ? '使用当前目录' : '使用项目根目录'}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
       <Modal
         animationType="fade"
         onRequestClose={() => setCreatingProject(false)}
@@ -305,8 +493,58 @@ const styles = StyleSheet.create({
     marginTop: spacing.control,
   },
   folderButtonText: { color: colors.brand, fontSize: 14, fontWeight: '600' },
+  directoryButton: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 6,
+    borderWidth: 1,
+    flexDirection: 'row',
+    height: 52,
+    marginTop: spacing.control,
+    paddingHorizontal: spacing.control,
+  },
+  directoryButtonTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '600',
+    marginRight: spacing.sm,
+  },
+  directoryButtonPath: { color: colors.muted, flex: 1, fontSize: 13 },
+  directoryButtonChevron: { color: colors.muted, fontSize: 24, lineHeight: 24 },
+  directoryBackdrop: { backgroundColor: colors.overlay, flex: 1, justifyContent: 'flex-end' },
+  directoryCard: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    maxHeight: '78%',
+    minHeight: 340,
+    padding: spacing.lg,
+  },
+  directoryHeader: { alignItems: 'center', flexDirection: 'row', marginBottom: spacing.md },
+  directoryBack: { alignItems: 'center', height: 36, justifyContent: 'center', width: 36 },
+  directoryBackText: { color: colors.text, fontSize: 30, lineHeight: 32 },
+  directoryHeading: { flex: 1, minWidth: 0 },
+  directoryBreadcrumb: { color: colors.muted, fontSize: 12, marginTop: 2 },
+  directoryClose: { alignItems: 'center', height: 36, justifyContent: 'center', width: 36 },
+  directoryCloseText: { color: colors.muted, fontSize: 24 },
+  directoryList: { flexGrow: 0, minHeight: 160 },
+  directoryEntry: {
+    alignItems: 'center',
+    borderBottomColor: colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    minHeight: 48,
+  },
+  directoryEntryName: { color: colors.text, flex: 1, fontSize: 15 },
+  directoryEmpty: {
+    color: colors.muted,
+    fontSize: 14,
+    paddingVertical: spacing.lg,
+    textAlign: 'center',
+  },
   modalBackdrop: {
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: colors.overlay,
     flex: 1,
     justifyContent: 'center',
     padding: spacing.lg,

@@ -9,6 +9,8 @@ import {
   pendingPermissionRequestSchema,
   resolvedPermissionRequestSchema,
   runningToolCallSchema,
+  scheduledRunSchema,
+  scheduledTaskSchema,
   sessionDetailSchema,
   sessionSummarySchema,
 } from './models.js';
@@ -60,6 +62,13 @@ export const sessionUpdatedEventSchema = sessionEventBaseSchema
   .extend({
     type: z.literal('session.updated'),
     payload: z.object({ session: sessionSummarySchema }).strict(),
+  })
+  .strict();
+
+export const sessionDeletedEventSchema = sessionEventBaseSchema
+  .extend({
+    type: z.literal('session.deleted'),
+    payload: z.object({ sessionId: entityIdSchema }).strict(),
   })
   .strict();
 
@@ -141,6 +150,48 @@ export const turnFailedEventSchema = sessionEventBaseSchema
   })
   .strict();
 
+export const scheduledTaskCreatedEventSchema = connectionEventBaseSchema
+  .extend({
+    type: z.literal('scheduled-task.created'),
+    payload: z.object({ task: scheduledTaskSchema }).strict(),
+  })
+  .strict();
+
+export const scheduledTaskUpdatedEventSchema = connectionEventBaseSchema
+  .extend({
+    type: z.literal('scheduled-task.updated'),
+    payload: z.object({ task: scheduledTaskSchema }).strict(),
+  })
+  .strict();
+
+export const scheduledTaskDeletedEventSchema = connectionEventBaseSchema
+  .extend({
+    type: z.literal('scheduled-task.deleted'),
+    payload: z.object({ taskId: entityIdSchema }).strict(),
+  })
+  .strict();
+
+export const scheduledRunCreatedEventSchema = connectionEventBaseSchema
+  .extend({
+    type: z.literal('scheduled-run.created'),
+    payload: z.object({ run: scheduledRunSchema }).strict(),
+  })
+  .strict();
+
+export const scheduledRunUpdatedEventSchema = connectionEventBaseSchema
+  .extend({
+    type: z.literal('scheduled-run.updated'),
+    payload: z.object({ run: scheduledRunSchema }).strict(),
+  })
+  .strict();
+
+export const scheduledRunNeedsAttentionEventSchema = connectionEventBaseSchema
+  .extend({
+    type: z.literal('scheduled-run.needs-attention'),
+    payload: z.object({ run: scheduledRunSchema }).strict(),
+  })
+  .strict();
+
 export const serverNoticeEventSchema = eventEnvelopeBaseSchema
   .extend({
     type: z.literal('server.notice'),
@@ -159,6 +210,7 @@ export const eventEnvelopeSchema = z.discriminatedUnion('type', [
   sessionSnapshotEventSchema,
   sessionCreatedEventSchema,
   sessionUpdatedEventSchema,
+  sessionDeletedEventSchema,
   messageCreatedEventSchema,
   assistantDeltaEventSchema,
   toolStartedEventSchema,
@@ -167,6 +219,12 @@ export const eventEnvelopeSchema = z.discriminatedUnion('type', [
   permissionResolvedEventSchema,
   turnCompletedEventSchema,
   turnFailedEventSchema,
+  scheduledTaskCreatedEventSchema,
+  scheduledTaskUpdatedEventSchema,
+  scheduledTaskDeletedEventSchema,
+  scheduledRunCreatedEventSchema,
+  scheduledRunUpdatedEventSchema,
+  scheduledRunNeedsAttentionEventSchema,
   serverNoticeEventSchema,
 ]);
 
@@ -174,6 +232,7 @@ export type ConnectionReadyEvent = z.infer<typeof connectionReadyEventSchema>;
 export type SessionSnapshotEvent = z.infer<typeof sessionSnapshotEventSchema>;
 export type SessionCreatedEvent = z.infer<typeof sessionCreatedEventSchema>;
 export type SessionUpdatedEvent = z.infer<typeof sessionUpdatedEventSchema>;
+export type SessionDeletedEvent = z.infer<typeof sessionDeletedEventSchema>;
 export type MessageCreatedEvent = z.infer<typeof messageCreatedEventSchema>;
 export type AssistantDeltaEvent = z.infer<typeof assistantDeltaEventSchema>;
 export type ToolStartedEvent = z.infer<typeof toolStartedEventSchema>;
@@ -182,5 +241,11 @@ export type PermissionRequestedEvent = z.infer<typeof permissionRequestedEventSc
 export type PermissionResolvedEvent = z.infer<typeof permissionResolvedEventSchema>;
 export type TurnCompletedEvent = z.infer<typeof turnCompletedEventSchema>;
 export type TurnFailedEvent = z.infer<typeof turnFailedEventSchema>;
+export type ScheduledTaskCreatedEvent = z.infer<typeof scheduledTaskCreatedEventSchema>;
+export type ScheduledTaskUpdatedEvent = z.infer<typeof scheduledTaskUpdatedEventSchema>;
+export type ScheduledTaskDeletedEvent = z.infer<typeof scheduledTaskDeletedEventSchema>;
+export type ScheduledRunCreatedEvent = z.infer<typeof scheduledRunCreatedEventSchema>;
+export type ScheduledRunUpdatedEvent = z.infer<typeof scheduledRunUpdatedEventSchema>;
+export type ScheduledRunNeedsAttentionEvent = z.infer<typeof scheduledRunNeedsAttentionEventSchema>;
 export type ServerNoticeEvent = z.infer<typeof serverNoticeEventSchema>;
 export type EventEnvelope = z.infer<typeof eventEnvelopeSchema>;

@@ -5,6 +5,6 @@ import { useConnection } from '@/state/connection-store';
 
 export default function ModelsRoute() {
   const connection = useConnection();
-  if (!connection.apiKey) return <Redirect href="/" />;
+  if (!connection.deviceToken) return <Redirect href="/" />;
   return <ModelScreen />;
 }

@@ -54,6 +54,13 @@ const gatewayConfigFileSchema = z
         maxFailures: 5,
         failureWindowSeconds: 300,
       }),
+    push: z
+      .object({
+        enabled: z.boolean().default(false),
+        expoAccessToken: z.string().trim().min(1).max(2_000).optional(),
+      })
+      .strict()
+      .default({ enabled: false }),
   })
   .strict();
 
@@ -61,6 +68,7 @@ export type GatewayProjectConfig = z.infer<typeof projectConfigSchema>;
 export type GatewayConfig = Omit<z.infer<typeof gatewayConfigFileSchema>, 'databasePath'> & {
   databasePath: string;
   configDirectory: string;
+  tlsCertificatePath?: string;
 };
 
 function defaultDataDirectory(): string {
@@ -81,12 +89,24 @@ export function loadGatewayConfig(
   const environmentApiKey = process.env.GATEWAY_API_KEY
     ? z.string().trim().min(1).max(256).parse(process.env.GATEWAY_API_KEY)
     : parsed.apiKey;
+  const pushEnabled = process.env.EXPO_PUSH_ENABLED
+    ? z
+        .enum(['true', 'false', '1', '0'])
+        .transform((value) => value === 'true' || value === '1')
+        .parse(process.env.EXPO_PUSH_ENABLED.toLowerCase())
+    : parsed.push.enabled;
 
   return {
     ...parsed,
     host: process.env.GATEWAY_HOST ?? parsed.host,
     port: environmentPort,
     apiKey: environmentApiKey,
+    push: {
+      enabled: pushEnabled,
+      ...(process.env.EXPO_ACCESS_TOKEN || parsed.push.expoAccessToken
+        ? { expoAccessToken: process.env.EXPO_ACCESS_TOKEN ?? parsed.push.expoAccessToken }
+        : {}),
+    },
     claude: {
       ...parsed.claude,
       ...(process.env.CLAUDE_CODE_EXECUTABLE
@@ -104,5 +124,8 @@ export function loadGatewayConfig(
         ? resolve(configDirectory, parsed.databasePath)
         : resolve(defaultDataDirectory(), 'gateway.db'),
     configDirectory,
+    ...(process.env.GATEWAY_TLS_CERT_PATH
+      ? { tlsCertificatePath: resolve(process.env.GATEWAY_TLS_CERT_PATH) }
+      : {}),
   };
 }

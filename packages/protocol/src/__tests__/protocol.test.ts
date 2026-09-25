@@ -12,6 +12,9 @@ import {
   errorResponseSchema,
   eventEnvelopeSchema,
   healthResponseSchema,
+  clearSessionResponseSchema,
+  createModelRequestSchema,
+  modelSummarySchema,
   pairingExchangeRequestSchema,
   pairingExchangeResponseSchema,
   projectsResponseSchema,
@@ -151,6 +154,29 @@ describe('HTTP schemas', () => {
     ).toBe(false);
   });
 
+  it('validates certificate health without exposing its filesystem path', () => {
+    const response = {
+      status: 'ok',
+      gatewayVersion: '0.1.0',
+      protocolVersion: PROTOCOL_VERSION,
+      config: { status: 'ready' },
+      database: { status: 'ready' },
+      pairing: { available: false },
+      certificate: {
+        status: 'ready',
+        expiresAt: '2026-09-01T00:00:00.000Z',
+      },
+      claude: { status: 'ready' },
+    };
+    expect(healthResponseSchema.safeParse(response).success).toBe(true);
+    expect(
+      healthResponseSchema.safeParse({
+        ...response,
+        certificate: { ...response.certificate, path: '/etc/letsencrypt/private.pem' },
+      }).success,
+    ).toBe(false);
+  });
+
   it('validates a six-digit pairing exchange request', () => {
     expect(
       pairingExchangeRequestSchema.parse({
@@ -208,6 +234,7 @@ describe('HTTP schemas', () => {
             id: 'project_123',
             displayName: 'ClaudeChatAPP',
             rootPath: 'D:\\projects\\ClaudeChatAPP',
+            origin: 'config',
           },
         ],
       }).projects,
@@ -225,6 +252,56 @@ describe('HTTP schemas', () => {
         ],
       }).success,
     ).toBe(false);
+  });
+
+  it('validates a clear-session response with an empty conversation', () => {
+    expect(
+      clearSessionResponseSchema.safeParse({
+        requestId: 'clear-session-1',
+        session: {
+          id: '11111111-1111-4111-8111-111111111111',
+          projectId: 'project_123',
+          projectDisplayName: 'Project',
+          title: 'Chat',
+          status: 'idle',
+          lastMessagePreview: null,
+          createdAt: '2026-08-25T00:00:00.000Z',
+          updatedAt: '2026-08-25T00:00:00.000Z',
+          messages: [],
+          toolCalls: [],
+          permissions: [],
+        },
+      }).success,
+    ).toBe(true);
+  });
+
+  it('describes model attachment capabilities without exposing credentials', () => {
+    const model = modelSummarySchema.parse({
+      id: '11111111-1111-4111-8111-111111111111',
+      name: 'Vision',
+      baseUrl: 'https://api.example.com',
+      model: 'vision-model',
+      isActive: true,
+      supportsImages: true,
+      supportsDocuments: true,
+      isMultimodalDefault: true,
+      createdAt: '2026-09-14T00:00:00.000Z',
+    });
+
+    expect(model).toMatchObject({ supportsImages: true, isMultimodalDefault: true });
+    expect(
+      createModelRequestSchema.parse({
+        requestId: 'create-vision',
+        name: 'Vision',
+        baseUrl: 'https://api.example.com',
+        apiKey: 'secret',
+        model: 'vision-model',
+        supportsImages: true,
+        supportsDocuments: false,
+        isMultimodalDefault: true,
+      }),
+    ).toMatchObject({ supportsImages: true, isMultimodalDefault: true });
+    expect(model).not.toHaveProperty('apiKey');
   });
 
   it('requires stable error codes and a request id field', () => {
@@ -245,6 +322,7 @@ describe('HTTP schemas', () => {
         'PAIRING_CODE_INVALID',
         'PAIRING_CODE_EXPIRED',
         'PAIRING_RATE_LIMITED',
+        'AUTH_RATE_LIMITED',
         'DEVICE_ALREADY_PAIRED',
         'PROJECT_PATH_INVALID',
       ]),
@@ -254,6 +332,7 @@ describe('HTTP schemas', () => {
       'PAIRING_CODE_INVALID',
       'PAIRING_CODE_EXPIRED',
       'PAIRING_RATE_LIMITED',
+      'AUTH_RATE_LIMITED',
       'DEVICE_ALREADY_PAIRED',
       'PROJECT_PATH_INVALID',
     ] as const) {

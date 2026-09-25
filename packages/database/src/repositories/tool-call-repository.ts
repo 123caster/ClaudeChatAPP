@@ -38,6 +38,7 @@ function mapToolCall(row: ToolCallRow): ToolCallRecord {
 export interface ToolCallRepository {
   get(id: string): ToolCallRecord | null;
   listBySession(sessionId: string): ToolCallRecord[];
+  deleteBySession(sessionId: string): number;
   create(record: ToolCallRecord): ToolCallRecord;
   complete(
     id: string,
@@ -73,6 +74,13 @@ class SqliteToolCallRepository implements ToolCallRepository {
       )
       .all({ $sessionId: sessionId }) as ToolCallRow[];
     return rows.map(mapToolCall);
+  }
+
+  public deleteBySession(sessionId: string): number {
+    const result = this.database
+      .prepare('DELETE FROM tool_calls WHERE session_id = $sessionId')
+      .run({ $sessionId: sessionId });
+    return Number(result.changes);
   }
 
   public create(record: ToolCallRecord): ToolCallRecord {
